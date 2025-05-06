@@ -6,9 +6,9 @@ HEAL.AI is a multilingual, AI-powered virtual receptionist that automates patien
 
 ## 🚀 Features
 
-- 🎤 **Multilingual Voice Input** – Patients speak in any language; AI understands via OpenAI Whisper API.
+- 🎤 **Multilingual Voice Input** – Patients speak in any language; AI understands via Whisper local model.
 - 📝 **Smart Registration Flow** – Automatically collects name, gender, symptoms, and follow-up details.
-- 🧠 **Symptom Understanding** – Uses GPT-4 to interpret natural language descriptions of illness.
+- 🧠 **Symptom Understanding** – Uses Gemini to interpret natural language descriptions of illness.
 - 📋 **Doctor Summary Generation** – Outputs clean, structured case summaries for immediate use.
 - 🔁 **Follow-Up Questions** – Dynamically asks clarifying questions like a real doctor would.
 - 💾 **MongoDB Integration** – Saves all patient data and summaries securely for future reference.

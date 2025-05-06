@@ -28,21 +28,28 @@ HEAL.AI is a multilingual, AI-powered virtual receptionist that automates patien
 
 ---
 
+
+
 ## 📂 Folder Structure
 
+```
+
 heal-ai/
-│
-├── app.py # Main Streamlit app
-├── whisper_utils.py # Voice-to-text using Whisper API
-├── gpt_utils.py # Prompting + response parsing with GPT-4
-├── mongo_client.py # MongoDB connection & queries
+├── app.py                 # 🎯 Main Streamlit app (UI + logic)
+├── whisper\_utils.py       # 🎙️ Voice-to-text via Whisper API
+├── gpt\_utils.py           # 🧠 Handles GPT-4 prompts & summary parsing
+├── mongo\_client.py        # 💾 MongoDB connection & query handler
+
 ├── data/
-│   └── temp_audio/ # Stores uploaded audio files
+│   └── temp\_audio/        # 📁 Stores temporary uploaded audio files
+
 ├── prompts/
-│   └── summary_prompt.txt # Custom prompt template for GPT
-├── .env # API keys (Whisper, OpenAI, MongoDB URI)
-├── requirements.txt
-└── README.md
+│   └── summary\_prompt.txt # 📝 Custom GPT prompt for doctor summaries
+
+├── .env                   # 🔐 API keys (Whisper, OpenAI, MongoDB URI)
+├── requirements.txt       # 📦 Python dependencies
+└── README.md              # 📘 Project documentation
+```
 
 ---
 

@@ -22,7 +22,7 @@ HEAL.AI is a multilingual, AI-powered virtual receptionist that automates patien
 |--------------|-----------------------------|
 | Frontend     | Streamlit                   |
 | Backend      | Pure Python (FastAPI optional later) |
-| AI Services  | OpenAI Whisper (STT), GPT-4 (LLM) |
+| AI Services  | Open Sourced Whisper (STT), Gemini Model (LLM) |
 | Database     | MongoDB (Document-based patient record storage) |
 | Deployment   | Streamlit Sharing / Render / Docker (Optional) |
 
@@ -37,7 +37,7 @@ HEAL.AI is a multilingual, AI-powered virtual receptionist that automates patien
 heal-ai/
 ├── app.py                 # 🎯 Main Streamlit app (UI + logic)
 ├── whisper\_utils.py       # 🎙️ Voice-to-text via Whisper API
-├── gpt\_utils.py           # 🧠 Handles GPT-4 prompts & summary parsing
+├── gpt\_utils.py           # 🧠 Handles Gemini prompts & summary parsing
 ├── mongo\_client.py        # 💾 MongoDB connection & query handler
 
 ├── data/
@@ -46,7 +46,7 @@ heal-ai/
 ├── prompts/
 │   └── summary\_prompt.txt # 📝 Custom GPT prompt for doctor summaries
 
-├── .env                   # 🔐 API keys (Whisper, OpenAI, MongoDB URI)
+├── .env                   # 🔐 API keys (Gemini, MongoDB URI)
 ├── requirements.txt       # 📦 Python dependencies
 └── README.md              # 📘 Project documentation
 ```
@@ -91,8 +91,8 @@ streamlit run app.py
 
 1. **User Input (Voice/Text)**: Patients speak into the mic (any language).
 2. **Whisper API**: Transcribes audio.
-3. **Transcription**: Passed to GPT-4 with a custom prompt.
-4. **Symptom Understanding & Follow-Up**: GPT-4 generates follow-up questions based on patient input.
+3. **Transcription**: Passed to Gemini with a custom prompt.
+4. **Symptom Understanding & Follow-Up**: Gemini generates follow-up questions based on patient input.
 5. **Patient Answers**: Via text or voice again.
 6. **GPT Builds a Full Clinical Summary**: Summary includes name, age, symptom, history, context.
 7. **Doctor Summary Output**: Doctor sees this before meeting the patient.

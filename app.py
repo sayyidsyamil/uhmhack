@@ -1,41 +1,46 @@
 import gradio as gr
 from gtts import gTTS
+import uuid
 import time
-import os
-
-def print_like_dislike(x: gr.LikeData):
-    print(x.index, x.value, x.liked)
 
 def add_message(history, message):
+    new_history = history.copy()
     for x in message["files"]:
-        history.append({"role": "user", "content": {"path": x}})
+        new_history.append({"role": "user", "content": {"path": x}})  # Changed to "path"
     if message["text"] is not None:
-        history.append({"role": "user", "content": message["text"]})
-    return history, gr.MultimodalTextbox(value=None, interactive=False)
+        new_history.append({"role": "user", "content": message["text"]})
+    return new_history, gr.MultimodalTextbox(value=None, interactive=False)
 
-def bot(history: list):
+def bot_response(history):
     response = "That's cool!"
-    history.append({"role": "assistant", "content": ""})
-    for character in response:
-        history[-1]["content"] += character
-        time.sleep(0.02)
-        yield history
-
-def text_to_speech(history):
-    if not history:
-        return None
-    # Get the last assistant message
-    last_msg = next((m["content"] for m in reversed(history) if m["role"] == "assistant"), "")
-    if not last_msg:
-        return None
-
-    tts = gTTS(last_msg)
-    file_path = "tts_output.mp3"
-    tts.save(file_path)
-    return file_path
+    audio_file = f"temp_{uuid.uuid4()}.mp3"
+    tts = gTTS(response)
+    tts.save(audio_file)
+    
+    # Get the Gradio server URL (works when running locally)
+    base_url = "http://127.0.0.1:7860"
+    
+    # Create message with play button
+    message = {
+        "role": "assistant",
+        "content": f"""
+        <div style="display: flex; align-items: center; gap: 8px;">
+            {response}
+            <button onclick='new Audio("{base_url}/file={audio_file}").play()' 
+                    style="background: none; border: none; cursor: pointer; font-size: 16px;">
+                🔊
+            </button>
+        </div>
+        """
+    }
+    
+    new_history = history.copy()
+    new_history.append(message)
+    return new_history
 
 with gr.Blocks() as demo:
     chatbot = gr.Chatbot(elem_id="chatbot", bubble_full_width=False, type="messages")
+    
     chat_input = gr.MultimodalTextbox(
         interactive=True,
         file_count="multiple",
@@ -43,15 +48,21 @@ with gr.Blocks() as demo:
         show_label=False,
         sources=["microphone", "upload"],
     )
-    tts_audio = gr.Audio(label="Assistant Voice", autoplay=True)
-    tts_button = gr.Button("🔊 Speak Last Reply")
-
+    
+    # Add JavaScript for audio playback
+    demo.head = """
+    <script>
+    function playAudio(button) {
+        const audioPath = button.getAttribute('data-audio');
+        const audio = new Audio(audioPath);
+        audio.play();
+    }
+    </script>
+    """
+    
     chat_msg = chat_input.submit(add_message, [chatbot, chat_input], [chatbot, chat_input])
-    bot_msg = chat_msg.then(bot, chatbot, chatbot)
+    bot_msg = chat_msg.then(bot_response, chatbot, chatbot)
     bot_msg.then(lambda: gr.MultimodalTextbox(interactive=True), None, [chat_input])
-
-    tts_button.click(fn=text_to_speech, inputs=[chatbot], outputs=[tts_audio])
-    chatbot.like(print_like_dislike, None, None, like_user_message=True)
 
 if __name__ == "__main__":
     demo.launch()

@@ -1,65 +1,57 @@
 import gradio as gr
 from gtts import gTTS
-import uuid
+import time
 import os
 
-assistant_history = []
+def print_like_dislike(x: gr.LikeData):
+    print(x.index, x.value, x.liked)
 
-def add_user_message(history, message):
+def add_message(history, message):
     for x in message["files"]:
-        history.append(gr.Row.update([gr.Textbox(value=f"[file] {x}", interactive=False)]))
+        history.append({"role": "user", "content": {"path": x}})
     if message["text"] is not None:
-        history.append(gr.Row.update([gr.Textbox(value=message["text"], interactive=False)]))
+        history.append({"role": "user", "content": message["text"]})
     return history, gr.MultimodalTextbox(value=None, interactive=False)
 
-def create_tts_button(text):
-    msg_id = str(uuid.uuid4())[:8]
-    audio_file = f"tts_{msg_id}.mp3"
-    tts = gTTS(text)
-    tts.save(audio_file)
-    return audio_file
-
-def bot(history):
+def bot(history: list):
     response = "That's cool!"
-    audio_file = create_tts_button(response)
-    with gr.Row() as row:
-        textbox = gr.Textbox(value=response, interactive=False, show_label=False)
-        speak_button = gr.Button("🔊", size="sm")
-        audio_output = gr.Audio(value=None, label=None, autoplay=True, visible=False)
+    history.append({"role": "assistant", "content": ""})
+    for character in response:
+        history[-1]["content"] += character
+        time.sleep(0.02)
+        yield history
 
-        def play_audio():
-            audio_output.visible = True
-            return audio_file
+def text_to_speech(history):
+    if not history:
+        return None
+    # Get the last assistant message
+    last_msg = next((m["content"] for m in reversed(history) if m["role"] == "assistant"), "")
+    if not last_msg:
+        return None
 
-        speak_button.click(play_audio, outputs=[audio_output])
-
-    history.append(row)
-    return history
+    tts = gTTS(last_msg)
+    file_path = "tts_output.mp3"
+    tts.save(file_path)
+    return file_path
 
 with gr.Blocks() as demo:
-    history_display = gr.State([])
+    chatbot = gr.Chatbot(elem_id="chatbot", bubble_full_width=False, type="messages")
+    chat_input = gr.MultimodalTextbox(
+        interactive=True,
+        file_count="multiple",
+        placeholder="Enter message or upload file...",
+        show_label=False,
+        sources=["microphone", "upload"],
+    )
+    tts_audio = gr.Audio(label="Assistant Voice", autoplay=True)
+    tts_button = gr.Button("🔊 Speak Last Reply")
 
-    layout = gr.Column()
-    with layout:
-        message_stack = gr.Column()
+    chat_msg = chat_input.submit(add_message, [chatbot, chat_input], [chatbot, chat_input])
+    bot_msg = chat_msg.then(bot, chatbot, chatbot)
+    bot_msg.then(lambda: gr.MultimodalTextbox(interactive=True), None, [chat_input])
 
-        chat_input = gr.MultimodalTextbox(
-            interactive=True,
-            file_count="multiple",
-            placeholder="Enter message or upload file...",
-            show_label=False,
-            sources=["microphone", "upload"],
-        )
+    tts_button.click(fn=text_to_speech, inputs=[chatbot], outputs=[tts_audio])
+    chatbot.like(print_like_dislike, None, None, like_user_message=True)
 
-        def update_ui(message_stack, chat_input_value):
-            messages, _ = add_user_message(message_stack, chat_input_value)
-            messages = bot(messages)
-            return messages, gr.MultimodalTextbox(value=None, interactive=True)
-
-        chat_input.submit(
-            fn=update_ui,
-            inputs=[message_stack, chat_input],
-            outputs=[message_stack, chat_input],
-        )
-
+if __name__ == "__main__":
     demo.launch()

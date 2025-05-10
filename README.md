@@ -57,7 +57,7 @@ heal-ai/
 
 ### 1. Clone the Repository
 ```bash
-git clone https://github.com/your-username/heal-ai.git
+git clone https://github.com/sayyidsyamil/heal-ai.git
 cd heal-ai
 ```
 
@@ -143,12 +143,22 @@ We welcome contributions from doctors, developers, and AI builders.
 
 ---
 
-## 📬 Contact
+## 📬 Contacts
 
-Sayyid Syamil  
-📧 sayyidsyamils@gmail.com  
-📍 Kuala Lumpur, Malaysia  
+Sayyid Syamil (Backend & Database Developer) 
+📧 sayyidsyamils@gmail.com
+📍 Kuala Lumpur, Malaysia
 🔗 [LinkedIn](https://www.linkedin.com/in/sayyidsyamil)
+
+Wong Yoong Yee (Backend & Model Developer)
+📧 mackwong1@gmail.com
+📍 Kuala Lumpur, Malaysia
+🔗 [LinkedIn](https://www.linkedin.com/in/mackwongyy)
+
+Chai Jie Sheng (Frontend Developer)
+📧 chaijiesheng88@gmail.com
+📍 Kuala Lumpur, Malaysia
+🔗 [LinkedIn](https://www.linkedin.com/in/chaijiesheng)
 
 ---
 

@@ -2,15 +2,15 @@ import gradio as gr
 from gtts import gTTS
 import uuid
 import os
+from transformers import AutoModelForSpeechSeq2Seq, AutoTokenizer, WhisperProcessor
+import torch
+import librosa
+import numpy as np
 
-assistant_history = []
-
-def add_user_message(history, message):
-    for x in message["files"]:
-        history.append(gr.Row.update([gr.Textbox(value=f"[file] {x}", interactive=False)]))
-    if message["text"] is not None:
-        history.append(gr.Row.update([gr.Textbox(value=message["text"], interactive=False)]))
-    return history, gr.MultimodalTextbox(value=None, interactive=False)
+model_name = "mesolitica/malaysian-whisper-base"
+tokenizer = AutoTokenizer.from_pretrained(model_name)
+model = AutoModelForSpeechSeq2Seq.from_pretrained(model_name)
+processor = WhisperProcessor.from_pretrained(model_name)
 
 def create_tts_button(text):
     msg_id = str(uuid.uuid4())[:8]
@@ -19,47 +19,34 @@ def create_tts_button(text):
     tts.save(audio_file)
     return audio_file
 
-def bot(history):
-    response = "That's cool!"
+def bot(text_input, audio_input):
+    if text_input:
+        response = text_input
+    else:
+        response = "No text input provided."
+
+    if audio_input:
+        y, sr = librosa.load(audio_input, sr=16000)
+
+        input_features = processor(y, sampling_rate=16000, return_tensors="pt").input_features
+
+        with torch.no_grad():
+            generated_ids = model.generate(input_features, return_timestamps=True, language="ms")
+        
+        response = tokenizer.decode(generated_ids[0], skip_special_tokens=True)
+
     audio_file = create_tts_button(response)
-    with gr.Row() as row:
-        textbox = gr.Textbox(value=response, interactive=False, show_label=False)
-        speak_button = gr.Button("🔊", size="sm")
-        audio_output = gr.Audio(value=None, label=None, autoplay=True, visible=False)
+    
+    return (
+        gr.Textbox(value=response, interactive=False, show_label=False),
+        audio_input,
+        gr.Audio(value=audio_file, label="Response Audio", autoplay=True)
+    )
 
-        def play_audio():
-            audio_output.visible = True
-            return audio_file
+iface = gr.Interface(
+    fn=bot, 
+    inputs=[gr.Textbox(placeholder="Enter your message", lines=1), gr.Audio(type="filepath")], 
+    outputs=[gr.Textbox(), gr.Audio(), gr.Audio()]
+)
 
-        speak_button.click(play_audio, outputs=[audio_output])
-
-    history.append(row)
-    return history
-
-with gr.Blocks() as demo:
-    history_display = gr.State([])
-
-    layout = gr.Column()
-    with layout:
-        message_stack = gr.Column()
-
-        chat_input = gr.MultimodalTextbox(
-            interactive=True,
-            file_count="multiple",
-            placeholder="Enter message or upload file...",
-            show_label=False,
-            sources=["microphone", "upload"],
-        )
-
-        def update_ui(message_stack, chat_input_value):
-            messages, _ = add_user_message(message_stack, chat_input_value)
-            messages = bot(messages)
-            return messages, gr.MultimodalTextbox(value=None, interactive=True)
-
-        chat_input.submit(
-            fn=update_ui,
-            inputs=[message_stack, chat_input],
-            outputs=[message_stack, chat_input],
-        )
-
-    demo.launch()
+iface.launch()

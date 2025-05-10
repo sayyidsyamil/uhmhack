@@ -20,11 +20,11 @@ HEAL.AI is a multilingual, AI-powered virtual receptionist that automates patien
 
 | Layer        | Tool / Stack                |
 |--------------|-----------------------------|
-| Frontend     | Streamlit                   |
+| Frontend     | Gradio                      |
 | Backend      | Pure Python (FastAPI optional later) |
-| AI Services  | Open Sourced Whisper (STT), Gemini Model (LLM) |
+| AI Services  | Open Sourced Whisper (STT), HuggingFace Model (LLM) |
 | Database     | MongoDB (Document-based patient record storage) |
-| Deployment   | Streamlit Sharing / Render / Docker (Optional) |
+| Deployment   | Gradio Sharing / Render / Docker (Optional) |
 
 ---
 
@@ -80,9 +80,14 @@ OPENAI_API_KEY=your_openai_key
 MONGODB_URI=your_mongo_connection_string
 ```
 
-### 5. Run Streamlit App
+### 5. Install Gradio
 ```bash
-streamlit run app.py
+pip install gradio
+```
+
+### 6. Run Gradio App
+```bash
+python app.py
 ```
 
 ---
@@ -146,19 +151,24 @@ We welcome contributions from doctors, developers, and AI builders.
 ## 📬 Contacts
 
 Sayyid Syamil (Backend & Database Developer) 
-📧 sayyidsyamils@gmail.com
-📍 Kuala Lumpur, Malaysia
-🔗 [LinkedIn](https://www.linkedin.com/in/sayyidsyamil)
-
-Wong Yoong Yee (Backend & Model Developer)
-📧 mackwong1@gmail.com
-📍 Kuala Lumpur, Malaysia
-🔗 [LinkedIn](https://www.linkedin.com/in/mackwongyy)
-
-Chai Jie Sheng (Frontend Developer)
-📧 chaijiesheng88@gmail.com
-📍 Kuala Lumpur, Malaysia
-🔗 [LinkedIn](https://www.linkedin.com/in/chaijiesheng)
+<br>📧 sayyidsyamils@gmail.com</br>
+<br>📍 Kuala Lumpur, Malaysia</br>
+<br>🔗 [LinkedIn](https://www.linkedin.com/in/sayyidsyamil)</br>
+<br></br>
+<br>Wong Yoong Yee (Backend & Model Developer)</br>
+<br>📧 mackwong1@gmail.com</br>
+<br>📍 Kuala Lumpur, Malaysia</br>
+<br>🔗 [LinkedIn](https://www.linkedin.com/in/mackwongyy)</br>
+<br></br>
+<br>Chai Jie Sheng (Frontend Developer)</br>
+<br>📧 chaijiesheng88@gmail.com</br>
+<br>📍 Kuala Lumpur, Malaysia</br>
+<br>🔗 [LinkedIn](https://www.linkedin.com/in/chaijiesheng)</br>
+<br></br>
+<br>Aman Iskandar (Business Advisor)</br>
+<br>📧 amaniskandar04@gmail.com</br>
+<br>📍 Kuala Lumpur, Malaysia</br>
+<br>🔗 [LinkedIn](https://www.linkedin.com/in/aman-iskandar-mohamad-dzulhaidi)</br>
 
 ---
 

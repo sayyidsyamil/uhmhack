@@ -262,7 +262,7 @@ export default function HealAI() {
                         </Card>
                       </div>
                     )}
-                  </div>
+        </div>
                 ) : (
                   <span className="font-bold">{msg.text}</span>
                 )}

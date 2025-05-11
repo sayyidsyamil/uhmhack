@@ -1,6 +1,4 @@
-Here's the updated version with team names and info added, and formatted in `.md` style:
 
-````markdown
 # HEAL.ai – Digital Front-Liner for Malaysian Clinics
 
 HEAL.ai is developed by the **UMHackathon** team for the **ELLM Startup Initiative 2025**, a competition organized by **UMSCOM**. Heal.AI is a multilingual, AI-powered virtual receptionist that automates patient intake, understands any local language, and generates structured summaries for doctors in the Malaysian public health context. It reduces clinic staff costs, eliminates language barriers, and streamlines diagnosis by ensuring doctors never need to repeat basic questions.

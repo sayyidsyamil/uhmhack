@@ -1,6 +1,6 @@
 # HEAL.AI – Multilingual AI Receptionist for Clinics
 
-HEAL.AI is a multilingual, AI-powered virtual receptionist that automates patient intake, understands any local language, and generates structured summaries for doctors. It reduces clinic staff cost, eliminates language barriers, and streamlines diagnosis by ensuring doctors never need to repeat basic questions.
+HEAL.AI is developed by the team UMHackathon for the ELLM Startup Initiative 2025, a competition organised by UMSCOM. Heal.AI is a multilingual, AI-powered virtual receptionist that automates patient intake, understands any local language, and generates structured summaries for doctors in the Malaysian public health context. It reduces clinic staff cost, eliminates language barriers, and streamlines diagnosis by ensuring doctors never need to repeat basic questions.
 
 ---
 
@@ -11,9 +11,9 @@ HEAL.AI is a multilingual, AI-powered virtual receptionist that automates patien
 - 🧠 **Symptom Understanding** – Uses Gemini to interpret natural language descriptions of illness.
 - 📋 **Doctor Summary Generation** – Outputs clean, structured case summaries for immediate use.
 - 🔁 **Follow-Up Questions** – Dynamically asks clarifying questions like a real doctor would.
-- 💾 **MongoDB Integration** – Saves all patient data and summaries securely for future reference.
-- 💻 **Streamlit Interface** – Clean, easy-to-use frontend for patients and clinic staff.
-
+- 💾 **SQLite Integration** – Saves all patient data and summaries securely for future reference.
+- 💻 **Gradio Interface** – Clean, easy-to-use frontend for patients and clinic staff.
+ 
 ---
 
 ## 🧱 Tech Stack
@@ -22,9 +22,9 @@ HEAL.AI is a multilingual, AI-powered virtual receptionist that automates patien
 |--------------|-----------------------------|
 | Frontend     | Gradio                      |
 | Backend      | Pure Python (FastAPI optional later) |
-| AI Services  | Open Sourced Whisper (STT), HuggingFace Model (LLM) |
-| Database     | MongoDB (Document-based patient record storage) |
-| Deployment   | Gradio Sharing / Render / Docker (Optional) |
+| AI Services  | Open Sourced Whisper (STT), HuggingFace and Open-Source Models (LLM) |
+| Database     | SQLite (Document-based patient record storage) |
+| Deployment   | Gradio Sharing |
 
 ---
 
@@ -35,7 +35,8 @@ HEAL.AI is a multilingual, AI-powered virtual receptionist that automates patien
 ```
 
 heal-ai/
-├── app.py                 # 🎯 Main Streamlit app (UI + logic)
+├── app.py                  # 🎯 Main Gradio app (UI + logic)
+├── clinic.db               # 📊 Database for example clinics
 ├── whisper\_utils.py       # 🎙️ Voice-to-text via Whisper API
 ├── gpt\_utils.py           # 🧠 Handles Gemini prompts & summary parsing
 ├── mongo\_client.py        # 💾 MongoDB connection & query handler
@@ -101,7 +102,7 @@ python app.py
 5. **Patient Answers**: Via text or voice again.
 6. **GPT Builds a Full Clinical Summary**: Summary includes name, age, symptom, history, context.
 7. **Doctor Summary Output**: Doctor sees this before meeting the patient.
-8. **MongoDB Storage**: All patient records saved as JSON documents.
+8. **SQLite Storage**: All patient records saved as JSON documents.
 
 ```json
 {
@@ -155,7 +156,7 @@ Sayyid Syamil (Backend & Database Developer)
 <br>📍 Kuala Lumpur, Malaysia</br>
 <br>🔗 [LinkedIn](https://www.linkedin.com/in/sayyidsyamil)</br>
 <br></br>
-<br>Wong Yoong Yee (Backend & Model Developer)</br>
+<br>Wong Yoong Yee (Backend & Model Developer, Group Leader)</br>
 <br>📧 mackwong1@gmail.com</br>
 <br>📍 Kuala Lumpur, Malaysia</br>
 <br>🔗 [LinkedIn](https://www.linkedin.com/in/mackwongyy)</br>

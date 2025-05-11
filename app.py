@@ -1,26 +1,38 @@
 import gradio as gr
 from gtts import gTTS
 import uuid
-import time
 
-def add_message(history, message):
+# Initialize conversation database with all topics
+conversations_db = {
+    "General": [],
+    "Health": [],
+    "Wellness": [],
+    "Fitness": []
+}
+
+def add_message(history, message, current_topic):
     new_history = history.copy()
+    # Handle files
     for x in message["files"]:
-        new_history.append({"role": "user", "content": {"path": x}})  # Changed to "path"
+        msg = {"role": "user", "content": {"path": x}}
+        new_history.append(msg)
+        conversations_db[current_topic].append(msg)
+    
+    # Handle text
     if message["text"] is not None:
-        new_history.append({"role": "user", "content": message["text"]})
+        msg = {"role": "user", "content": message["text"]}
+        new_history.append(msg)
+        conversations_db[current_topic].append(msg)
+    
     return new_history, gr.MultimodalTextbox(value=None, interactive=False)
 
-def bot_response(history):
-    response = "That's cool!"
+def bot_response(history, current_topic):
+    response = f"That's cool! (Topic: {current_topic})"
     audio_file = f"temp_{uuid.uuid4()}.mp3"
     tts = gTTS(response)
     tts.save(audio_file)
     
-    # Get the Gradio server URL (works when running locally)
     base_url = "http://127.0.0.1:7860"
-    
-    # Create message with play button
     message = {
         "role": "assistant",
         "content": f"""
@@ -36,9 +48,26 @@ def bot_response(history):
     
     new_history = history.copy()
     new_history.append(message)
+    conversations_db[current_topic].append(message)
     return new_history
 
+def load_topic(topic_name):
+    return conversations_db.get(topic_name, [])
+
 with gr.Blocks() as demo:
+    # Initialize topics from our database
+    topic_list = list(conversations_db.keys())
+    
+    with gr.Sidebar(position="left"):
+        gr.Markdown("# HEAL.AI")
+        gr.Markdown("Check out the previous conversations!")
+         
+        conversation_topic = gr.Dropdown(
+            choices=topic_list,  # Use the actual list of topics
+            label="Choose the topic of conversation",
+            value="General"
+        )
+
     chatbot = gr.Chatbot(elem_id="chatbot", bubble_full_width=False, type="messages")
     
     chat_input = gr.MultimodalTextbox(
@@ -49,20 +78,31 @@ with gr.Blocks() as demo:
         sources=["microphone", "upload"],
     )
     
-    # Add JavaScript for audio playback
-    demo.head = """
-    <script>
-    function playAudio(button) {
-        const audioPath = button.getAttribute('data-audio');
-        const audio = new Audio(audioPath);
-        audio.play();
-    }
-    </script>
-    """
+    # Connect topic selection to chat loading
+    conversation_topic.change(
+        load_topic,
+        inputs=conversation_topic,
+        outputs=chatbot
+    )
     
-    chat_msg = chat_input.submit(add_message, [chatbot, chat_input], [chatbot, chat_input])
-    bot_msg = chat_msg.then(bot_response, chatbot, chatbot)
-    bot_msg.then(lambda: gr.MultimodalTextbox(interactive=True), None, [chat_input])
+    # Update message handlers to include current topic
+    chat_msg = chat_input.submit(
+        add_message, 
+        [chatbot, chat_input, conversation_topic], 
+        [chatbot, chat_input]
+    )
+    
+    bot_msg = chat_msg.then(
+        bot_response, 
+        [chatbot, conversation_topic], 
+        chatbot
+    )
+    
+    bot_msg.then(
+        lambda: gr.MultimodalTextbox(interactive=True), 
+        None, 
+        [chat_input]
+    )
 
 if __name__ == "__main__":
     demo.launch()

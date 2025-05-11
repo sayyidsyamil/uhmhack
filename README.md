@@ -1,7 +1,7 @@
 
 # HEAL.ai – Digital Front-Liner for Malaysian Clinics
 
-HEAL.ai is developed by the **UMHackathon** team for the **ELLM Startup Initiative 2025**, a competition organized by **UMSCOM**. Heal.AI is a multilingual, AI-powered virtual receptionist that automates patient intake, understands any local language, and generates structured summaries for doctors in the Malaysian public health context. It reduces clinic staff costs, eliminates language barriers, and streamlines diagnosis by ensuring doctors never need to repeat basic questions.
+HEAL.ai is developed by the **UHMackathon** team for the **ELLM Startup Initiative 2025**, a competition organised by **UMSCOM**. HEAL.ai is a multilingual, AI-powered virtual receptionist that automates patient intake, understands any local language, and generates structured summaries for doctors in the Malaysian public health context. It reduces clinic staff costs, eliminates language barriers, and streamlines diagnosis by ensuring doctors never need to repeat basic questions.
 
 HEAL.ai is built to function in **Klinik Kesihatan** and **Hospital Kerajaan** settings across Malaysia, providing a seamless experience for both patients and healthcare providers. It triages patients, searches or registers them in the database, logs the visit, auto-assigns a queue number based on doctor availability, and delivers concise visit summaries in **simple Malaysian English** and **Bahasa Malaysia**. This makes it easy to understand for all users, from clinic staff to patients.
 
@@ -15,7 +15,7 @@ HEAL.ai is built to function in **Klinik Kesihatan** and **Hospital Kerajaan** s
 | **2. Search**  | `patient_search_tool` looks up patients by IC number, passport, or name. | MCP + Custom                |
 | **3. Register** | If the patient is not found, AI registers them and completes missing fields. | Custom                     |
 | **4. Visit Qs** | AI collects chief complaint, duration, and severity (in simple terms). | –                           |
-| **5. Doctor Pick** | AI matches patient to available doctor based on specialization.     | MCP                         |
+| **5. Doctor Pick** | AI matches patient to available doctor based on specialisation.     | MCP                         |
 | **6. Log & Queue** | AI logs the visit and assigns a queue number automatically (e.g., KL###). | Custom                     |
 | **7. Summary**  | AI generates a concise visit summary for the doctor.                  | –                           |
 
@@ -105,9 +105,9 @@ These tools are merged at runtime and supplied to Gemini for function execution.
 
 ## 💼 Business Impact
 
-HEAL.ai aims to be a game-changer for the Malaysian public health system by reducing the burden on healthcare staff while improving patient care. It streamlines the intake process, allowing clinic staff to focus on more critical tasks, all while ensuring that doctors have accurate and organized patient information at their fingertips.
+HEAL.ai aims to be a game-changer for the Malaysian public health system by reducing the burden on healthcare staff while improving patient care. It streamlines the intake process, allowing clinic staff to focus on more critical tasks, all while ensuring that doctors have accurate and organised patient information at their fingertips.
 
-By addressing language barriers and minimizing administrative workload, HEAL.ai can reduce operational costs for government healthcare facilities. Its multilingual capabilities also allow it to cater to diverse communities, making healthcare more accessible to all.
+By addressing language barriers and minimising administrative workload, HEAL.ai can reduce operational costs for government healthcare facilities. Its multilingual capabilities also allow it to cater to diverse communities, making healthcare more accessible to all.
 
 ---
 

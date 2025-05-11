@@ -2,51 +2,42 @@
 body {
     font-family: Arial, sans-serif;
     background-color: #f4f4f4;
-    margin: 0;
-    padding: 0;
+}
+
+#conversation-list {
+    width: 300px;
+    height: 500px;
+    overflow-y: scroll;
+    margin-right: 20px;
+}
+
+#chat-container {
     display: flex;
     flex-direction: column;
-    justify-content: center;
-    vertical-align: center;
-    align-items: center;
-    height: 100vh;
-}
-
-.header {
-    background-color: #044ed9;
-    padding: 15px;
-    text-align: center;
-    color: white;
-    font-size: 24px;
-    width: 100%;
-}
-
-.logo {
-    height: 40px;
-    vertical-align: middle;
-}
-
-.title {
-    vertical-align: middle;
-    margin-left: 10px;
-}
-
-.gradio-container {
-    width: 80%;
-    max-width: 800px;
+    justify-content: space-between;
     margin-top: 20px;
 }
 
-.gradio-row {
+#chatbot {
+    height: 500px;
+    overflow-y: scroll;
+}
+
+header {
+    background-color: #0349d5;
+    padding: 15px;
     display: flex;
-    justify-content: center;
-    align-items: center;
+    justify-content: center;    /* center horizontally */
+    align-items: center;        /* center vertically */
 }
 
-.gradio-row .gradio-textbox {
-    width: 80%;
+.header img {
+    height: 40px;
+    margin: 0;                   /* reset any default margins */
 }
 
-.gradio-row .gradio-audio {
-    margin-top: 15px;
+.header .title {
+    margin-left: 10px;
+    font-size: 24px;
+    color: white;
 }

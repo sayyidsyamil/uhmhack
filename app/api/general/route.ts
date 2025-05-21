@@ -8,6 +8,7 @@ import { open, Database } from 'sqlite';
 import fs from 'fs/promises';
 import os from 'os';
 import { v4 as uuidv4 } from 'uuid'; // For unique filenames
+import { triage_tool, search_tool, register_tool, queue_tool, summary_tool, feedback_tool } from '@/lib/tools';
 
 
 
@@ -48,293 +49,158 @@ async function getDb() {
   return open({ filename: DB_PATH, driver: sqlite3.Database });
 }
 
-// --- Custom Tool Declarations ---
-const customTools = [
+// --- Tool Declarations ---
+const tools = [
   {
-    name: 'patient_search_tool',
-    description: 'Finds a patient by IC, passport, or full name. Supports partial and fuzzy matching.',
+    name: 'triage_tool',
+    description: 'Determines triage urgency level (red, yellow, green, or blue) based on symptoms. Returns structured triage level, clinical reasoning, key factors, and recommendations.',
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        symptoms: { type: Type.STRING, description: 'Patient symptoms or complaint, in plain language. May be in a simple format with symptoms separated by + or other separators.' }
+      },
+      required: ['symptoms']
+    }
+  },
+  {
+    name: 'search_tool',
+    description: 'Searches for a patient by IC number or passport number.',
     parameters: {
       type: Type.OBJECT,
       properties: {
         ic_number: { type: Type.STRING, description: 'IC number' },
-        passport_number: { type: Type.STRING, description: 'Passport number' },
-        full_name: { type: Type.STRING, description: 'Full name (partial allowed)' }
+        passport_number: { type: Type.STRING, description: 'Passport number' }
       },
       required: []
     }
   },
   {
-    name: 'register_patient_tool',
-    description: 'Registers a new patient in the clinic. Checks for duplicates before adding. Requires full_name, (ic_number OR passport_number), phone_number, gender, address. Race and allergies are optional.',
+    name: 'register_tool',
+    description: 'Registers a new patient in the clinic.',
     parameters: {
       type: Type.OBJECT,
       properties: {
-        full_name: { type: Type.STRING, description: 'Full name of the patient.' },
-        ic_number: { type: Type.STRING, description: 'Malaysian IC number (e.g., 900101011234).' },
-        passport_number: { type: Type.STRING, description: 'Passport number for non-Malaysians.' },
-        phone_number: { type: Type.STRING, description: 'Patient\'s phone number.' },
-        gender: { type: Type.STRING, description: 'Patient\'s gender (male/female/other or lelaki/perempuan). English will be stored.' },
-        race: { type: Type.STRING, description: 'Patient\'s race (Malay, Chinese, Indian, Eurasian, Other). Defaults to Other if not specified or invalid.' },
-        address: { type: Type.STRING, description: 'Patient\'s current residential address.' },
-        allergies: { type: Type.STRING, description: 'Known allergies (e.g., Penicillin, Dust). Defaults to "None" if not specified.' }
+        ic_number: { type: Type.STRING, description: 'IC number' },
+        passport_number: { type: Type.STRING, description: 'Passport number' },
+        full_name: { type: Type.STRING, description: 'Full name' },
+        age: { type: Type.NUMBER, description: 'Age' },
+        gender: { type: Type.STRING, description: 'Gender (male/female)' },
+        race: { type: Type.STRING, description: 'Race' },
+        phone: { type: Type.STRING, description: 'Phone number' }
       },
-      required: ['full_name', 'phone_number', 'gender', 'address'] // IC or Passport will be handled by logic
+      required: ['full_name', 'age', 'gender', 'phone']
     }
   },
   {
-    name: 'log_visit_and_assign_queue_tool',
-    description: 'Logs a new patient visit and assigns a queue number. Requires patient_id, chief_complaint, triage_level. It will create a visit record and then a queue record, returning the queue number.',
+    name: 'queue_tool',
+    description: 'Adds a patient to the queue.',
     parameters: {
       type: Type.OBJECT,
       properties: {
-        patient_id: { type: Type.INTEGER, description: 'The ID of the patient from the patients table.' },
-        doctor_id: { type: Type.INTEGER, description: 'The ID of the doctor assigned for the visit. Can be determined by doctor_search_tool.' },
-        chief_complaint: { type: Type.STRING, description: 'The main reason for the patient\'s visit (e.g., "sakit kepala", "demam").' },
-        triage_level: { type: Type.STRING, description: 'The urgency level determined by triage (red, yellow, or green).' },
-        // status for visit can be defaulted to 'pending'
-        // patient_id for queue is same as visit
+        patient_id: { type: Type.NUMBER, description: 'Patient ID' },
+        triage: { type: Type.STRING, description: 'Triage level' },
+        symptoms: { type: Type.STRING, description: 'Patient symptoms' },
+        triage_logic: { type: Type.STRING, description: 'Clinical reasoning for triage level' }
       },
-      required: ['patient_id', 'doctor_id', 'chief_complaint', 'triage_level']
+      required: ['patient_id', 'triage', 'symptoms', 'triage_logic']
     }
   },
   {
-    name: 'doctor_search_tool',
-    description: 'Finds available doctors. Can filter by department or specialization. If no filters, returns first available doctor.',
+    name: 'summary_tool',
+    description: 'Generates a summary of the patient visit.',
     parameters: {
       type: Type.OBJECT,
       properties: {
-        department: { type: Type.STRING, description: 'Department to search for a doctor in (e.g., "General Medicine", "Pediatrics").' },
-        specialization: { type: Type.STRING, description: 'Specialization of the doctor (e.g., "Cardiologist", "Pediatrician").' }
+        conversation: { type: Type.STRING, description: 'Conversation text' },
+        triage: { type: Type.STRING, description: 'Triage level' },
+        symptoms: { type: Type.STRING, description: 'Patient symptoms' },
+        queue_id: { type: Type.NUMBER, description: 'Queue ID to link the summary to' }
       },
-      required: [] // Both optional
+      required: ['conversation', 'triage', 'symptoms', 'queue_id']
     }
   },
   {
-    name: 'triage_tool',
-    description: 'Determines triage urgency level (red, yellow, green) based on symptoms. Returns structured triage_level, reason, and recommended action.',
+    name: 'feedback_tool',
+    description: 'Records patient feedback.',
     parameters: {
       type: Type.OBJECT,
       properties: {
-        symptoms: { type: Type.STRING, description: 'Patient symptoms or complaint, in plain language.' }
+        patient_id: { type: Type.NUMBER, description: 'Patient ID' },
+        feedback: { type: Type.STRING, description: 'Feedback text' }
       },
-      required: ['symptoms']
+      required: ['patient_id', 'feedback']
     }
   }
 ];
 
 const MCP_DB_PATH = path.join(process.cwd(), 'lib', 'clinic.db');
 
-const customToolNames = customTools.map(t => t.name);
+const toolNames = tools.map(t => t.name);
 
-async function handleCustomToolCall(name: string, args: any, history?: any[]) {
-  const db = await getDb();
-  console.log(`[Custom Tool Call] ${name} args:`, args);
+async function handleToolCall(name: string, args: any) {
+  console.log(`[Tool Call] ${name} args:`, args);
 
-  if (name === 'patient_search_tool') {
-    // Normalize aliases
-    const ic_number = args.ic_number || args.ic_or_passport || undefined;
-    const passport_number = args.passport_number || undefined;
-    const full_name = args.full_name || args.name || undefined;
-    let where = [];
-    let params: any[] = [];
-    if (ic_number) { where.push('ic_number = ?'); params.push(ic_number); }
-    if (!ic_number && args.ic_or_passport && args.ic_or_passport.length > 0 && args.ic_or_passport.startsWith('P')) {
-      // treat as passport if starts with P
-      where.push('passport_number = ?');
-      params.push(args.ic_or_passport);
+  try {
+    switch (name) {
+      case 'triage_tool':
+        return { content: [{ type: 'text', text: JSON.stringify(await triage_tool(args)) }] };
+      case 'search_tool':
+        return { content: [{ type: 'text', text: JSON.stringify(await search_tool(args)) }] };
+      case 'register_tool':
+        return { content: [{ type: 'text', text: JSON.stringify(await register_tool(args)) }] };
+      case 'queue_tool':
+        return { content: [{ type: 'text', text: JSON.stringify(await queue_tool(args)) }] };
+      case 'summary_tool':
+        return { content: [{ type: 'text', text: JSON.stringify(await summary_tool(args)) }] };
+      case 'feedback_tool':
+        return { content: [{ type: 'text', text: JSON.stringify(await feedback_tool(args)) }] };
+      default:
+        const msg = `Tool '${name}' not found or not implemented.`;
+        console.log(`[Tool Result] ${name}:`, msg);
+        return { content: [{ type: 'text', text: msg }] };
     }
-    if (passport_number) { where.push('passport_number = ?'); params.push(passport_number); }
-    if (full_name) { where.push('full_name LIKE ?'); params.push(`%${full_name}%`); }
-    if (where.length === 0) {
-      const msg = 'missing: at least one of ic_number, passport_number, or full_name';
-      console.log(`[Custom Tool Result] ${name}:`, msg);
-      return { content: [{ type: 'text', text: msg }] };
-    }
-    const sql = `SELECT * FROM patients WHERE ${where.join(' OR ')}`;
-    const rows = await db.all(sql, params);
-    const msg = rows.length === 0 ? 'no patient found.' : JSON.stringify(rows, null, 2);
-    console.log(`[Custom Tool Result] ${name}:`, msg);
-    if (rows.length === 0) return { content: [{ type: 'text', text: 'no patient found. advise to register.' }] };
-    return { content: [{ type: 'text', text: JSON.stringify(rows, null, 2) }] };
+  } catch (error) {
+    console.error(`[Tool Error] ${name}:`, error);
+    return { content: [{ type: 'text', text: 'Sorry, there was a system error. Please try again.' }] };
   }
+}
 
-  if (name === 'register_patient_tool') {
-    // Alias mapping and normalization
-    const full_name = args.full_name || args.name;
-    // Map phone alias
-    if (!args.phone_number && args.phone) args.phone_number = args.phone;
-    // Map gender Malay terms
-    if (args.gender) {
-      const g = (args.gender as string).toLowerCase();
-      if (g === 'lelaki' || g === 'male') args.gender = 'male';
-      else if (g === 'perempuan' || g === 'female') args.gender = 'female';
-    }
-    // Map ic_or_passport alias
-    if (!args.ic_number && !args.passport_number && args.ic_or_passport) {
-      if (/^[0-9]{12}$/.test(args.ic_or_passport)) args.ic_number = args.ic_or_passport;
-      else args.passport_number = args.ic_or_passport;
-    }
-    const required = ['phone_number', 'gender', 'address', 'allergies'];
-    const missing = required.filter(f => !args[f]);
-    if (!args.ic_number && !args.passport_number) missing.unshift('ic_number or passport_number');
-    if (!full_name) {
-      const msg = 'missing: full_name';
-      console.log(`[Custom Tool Result] ${name}:`, msg);
-      return { content: [{ type: 'text', text: msg }] };
-    }
-    if (missing.length > 0) {
-      const msg = `missing: ${missing.join(', ')}`;
-      console.log(`[Custom Tool Result] ${name}:`, msg);
-      return { content: [{ type: 'text', text: msg }] };
-    }
-    // Defensive: check if 'full_name' column exists in patients table
-    const columns = await db.all(`PRAGMA table_info(patients)`);
-    const hasFullName = columns.some(col => col.name === 'full_name');
-    if (!hasFullName) {
-      const msg = 'Error: patients table has no column named full_name. Please check your database schema.';
-      console.log(`[Custom Tool Result] ${name}:`, msg);
-      return { content: [{ type: 'text', text: msg }] };
-    }
-    // Check for duplicate IC or passport
-    const { ic_number, passport_number, phone_number, gender, address, allergies } = args;
-    let { race } = args as any;
-    const allowedRaces = ['Malay', 'Indian', 'Chinese', 'Eurasian', 'Other'];
-    if (!race || !allowedRaces.includes(race)) {
-      race = 'Other';
-    }
-    let existing = null;
-    if (ic_number) {
-      existing = await db.get(`SELECT * FROM patients WHERE ic_number = ?`, [ic_number]);
-    }
-    if (!existing && passport_number) {
-      existing = await db.get(`SELECT * FROM patients WHERE passport_number = ?`, [passport_number]);
-    }
-    if (existing) {
-      const msg = 'patient already exists.';
-      console.log(`[Custom Tool Result] ${name}:`, msg);
-      return { content: [{ type: 'text', text: msg }] };
-    }
-    await db.run(
-      `INSERT INTO patients (full_name, ic_number, passport_number, phone_number, gender, race, address, allergies, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
-      [full_name, ic_number || null, passport_number || null, phone_number, gender, race, address, allergies || 'None']
-    );
-    const newPatient = await db.get('SELECT * FROM patients WHERE rowid = last_insert_rowid()');
-    const msg = `registration successful. patient details: ${JSON.stringify(newPatient, null, 2)}`;
-    console.log(`[Custom Tool Result] ${name}:`, msg);
-    return { content: [{ type: 'text', text: msg }] };
+interface RequestBody {
+  history: Array<{ sender: string; text: string }>;
+}
+
+// --- Conversation History Logging ---
+function logConversationHistory({ history }: { history: Array<{ sender: string, text: string }> }) {
+  console.log('--- Conversation History ---');
+  for (const msg of history) {
+    if (msg.sender === 'system') continue; // Don't print system prompt in logs
+    console.log(`${msg.sender}: ${msg.text}`);
   }
+  console.log('---------------------------');
+}
 
-  if (name === 'log_visit_and_assign_queue_tool') {
-    const { patient_id, doctor_id, chief_complaint, triage_level } = args;
-    const required = ['patient_id', 'doctor_id', 'chief_complaint', 'triage_level'];
-    const missing = required.filter(f => !(f in args) || args[f] === null || args[f] === undefined);
-
-    if (missing.length > 0) {
-      const msg = `missing required fields for log_visit_and_assign_queue_tool: ${missing.join(', ')}`;
-      console.log(`[Custom Tool Result] ${name}:`, msg);
-      return { content: [{ type: 'text', text: msg }] };
-    }
-
+// Helper to generate AI thought/analysis after tool output
+function generateAIThought(toolName, toolOutput) {
+  if (toolName === 'triage_tool') {
     try {
-      // Log the visit
-      const visitStatus = 'pending'; // Default status for new visits
-      const visitResult = await db.run(
-        `INSERT INTO visits (patient_id, doctor_id, chief_complaint, triage_level, status, visit_date, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'), datetime('now'))`,
-        [patient_id, doctor_id, chief_complaint, triage_level, visitStatus]
-      );
-      const visit_id = visitResult.lastID;
-
-      if (!visit_id) {
-        const msg = "failed to log visit, could not get visit_id.";
-        console.error(`[Custom Tool Error] ${name}: ${msg}`);
-        return { content: [{ type: 'text', text: msg }] };
+      const triageObj = JSON.parse(toolOutput);
+      if (triageObj && triageObj.triage) {
+        const color = triageObj.triage.toLowerCase();
+        if (color === 'red') {
+          return 'Triage result is RED (emergency). I will now trigger emergency protocol and alert the nurse.';
+        } else if (color === 'yellow' || color === 'green') {
+          return `Triage result is ${color.toUpperCase()}. I will now proceed to patient search and registration as per workflow.`;
+        } else if (color === 'blue') {
+          return 'Triage result is BLUE (routine). I will now proceed with routine workflow, starting with patient search.';
+        }
       }
-
-      // Assign queue number
-      // Simple queue number generation: KL + 3 random digits
-      const queue_number = `KL${Math.floor(100 + Math.random() * 900)}`;
-      const queueStatus = 'waiting';
-      await db.run(
-        `INSERT INTO queue (visit_id, patient_id, queue_number, status, created_at, updated_at)
-         VALUES (?, ?, ?, ?, datetime('now'), datetime('now'))`,
-        [visit_id, patient_id, queue_number, queueStatus]
-      );
-
-      const msg = `visit logged (ID: ${visit_id}) and queue number ${queue_number} assigned to patient ID ${patient_id}.`;
-      console.log(`[Custom Tool Result] ${name}:`, msg);
-      return { content: [{ type: 'text', text: `ok, visit logged. your queue number is ${queue_number}.` }] };
-
-    } catch (error: any) {
-      console.error(`[Custom Tool Error] ${name}:`, error);
-      return { content: [{ type: 'text', text: `error processing visit and queue: ${error.message}` }] };
+    } catch (e) {
+      // fallback
     }
+    return 'Triage completed. I will now proceed to the next workflow step based on the triage result.';
   }
-
-  if (name === 'doctor_search_tool') {
-    let sql = `SELECT staff_id, full_name, specialization, department FROM doctors_staff WHERE role = 'doctor' AND availability_status = 'available'`;
-    const params: any[] = [];
-    if (args.department) {
-      sql += ' AND department = ?';
-      params.push(args.department);
-    }
-    if (args.specialization) {
-      sql += ' AND specialization = ?';
-      params.push(args.specialization);
-    }
-    sql += ' LIMIT 5'; // Return a few available doctors
-
-    const doctors = await db.all(sql, params);
-    if (doctors.length === 0) {
-      // If no specific match, try finding any available doctor
-      const anyDoctor = await db.all(`SELECT staff_id, full_name, specialization, department FROM doctors_staff WHERE role = 'doctor' AND availability_status = 'available' LIMIT 1`);
-      if (anyDoctor.length > 0) {
-        const msg = `no doctor found for specified criteria. found an available doctor: ${JSON.stringify(anyDoctor, null, 2)}`;
-        console.log(`[Custom Tool Result] ${name}:`, msg);
-        return { content: [{ type: 'text', text: msg }] };
-      }
-      const msg = 'no doctors available at the moment.';
-      console.log(`[Custom Tool Result] ${name}:`, msg);
-      return { content: [{ type: 'text', text: msg }] };
-    }
-    const msg = `available doctor(s): ${JSON.stringify(doctors, null, 2)}`;
-    console.log(`[Custom Tool Result] ${name}:`, msg);
-    return { content: [{ type: 'text', text: msg }] };
-  }
-
-  if (name === 'triage_tool') {
-    const symptoms = (args.symptoms || '').toLowerCase();
-    let triage_level: 'red' | 'yellow' | 'green' = 'green';
-    let reason = '';
-    let description = '';
-    if (/chest pain|seizure|breath|susah nafas|major bleeding|pengsan|collapse|fit|convulsion/.test(symptoms)) {
-      triage_level = 'red';
-      reason = 'emergency symptom detected';
-      description = `Symptoms: ${symptoms}. Emergency detected.`;
-    } else if (/high fever|asthma|dizziness|demam tinggi|sesak nafas|pening|muntah|vomit|asthma|suspect dengue|severe/.test(symptoms)) {
-      triage_level = 'yellow';
-      reason = 'semi-urgent symptom detected';
-      description = `Symptoms: ${symptoms}. Semi-urgent detected.`;
-    } else if (/flu|cough|batuk|selsema|minor injury|sakit ringan|sakit kepala ringan|mild/.test(symptoms)) {
-      triage_level = 'green';
-      reason = 'non-urgent symptom detected';
-      description = `Symptoms: ${symptoms}. Non-urgent.`;
-    } else if (!symptoms || symptoms.length < 5 || /sakit|pain|demam|fever|pening|dizzy|tak sihat|unwell|not feeling well|unwell|bad|sick|headache|mild|general|kurang sihat/.test(symptoms)) {
-      triage_level = 'green';
-      reason = 'not enough detail, defaulted to non-urgent';
-      description = `Symptoms: ${symptoms || 'not clear'}. Not enough info, defaulted to non-urgent.`;
-    } else {
-      triage_level = 'green';
-      reason = 'uncertain, defaulted to non-urgent';
-      description = `Symptoms: ${symptoms}. Not a clear match, defaulted to non-urgent.`;
-    }
-    return { content: [{ type: 'text', text: JSON.stringify({ triage_level, description, reason }) }] };
-  }
-
-  const msg = `custom tool '${name}' not found or not implemented.`;
-  console.log(`[Custom Tool Result] ${name}:`, msg);
-  return { content: [{ type: 'text', text: msg }] };
+  // For other tools, generic message
+  return `Based on the output of ${toolName}, I will now proceed to the next step in the workflow.`;
 }
 
 export async function POST(req: NextRequest) {
@@ -343,17 +209,23 @@ export async function POST(req: NextRequest) {
   let userInputText: string | null = null;
   let audioFile: File | null = null;
 
+  // Log incoming request headers
+  console.log('--- Incoming Request ---');
+  console.log('Headers:', req.headers);
+
   if (contentType.includes('multipart/form-data')) {
     const formData = await req.formData();
     history = JSON.parse(formData.get('history') as string || '[]');
-    userInputText = formData.get('input') as string | null; // Text input might still be there
+    userInputText = formData.get('input') as string | null;
     audioFile = formData.get('audio') as File | null;
+    console.log('Parsed multipart/form-data:', { history, userInputText, audioFile: !!audioFile });
   } else if (contentType.includes('application/json')) {
-    const body = await req.json();
+    const body = await req.json() as RequestBody;
     history = body.history;
-    // Ensure history is an array and not empty before accessing its last element
     userInputText = (Array.isArray(body.history) && body.history.length > 0) ? body.history[body.history.length - 1].text : null;
+    console.log('Parsed application/json:', { history, userInputText });
   } else {
+    console.log('Unsupported content type:', contentType);
     return NextResponse.json({ error: 'Unsupported content type' }, { status: 400 });
   }
 
@@ -391,6 +263,7 @@ export async function POST(req: NextRequest) {
 
       currentMessageText = result.text || "Could not transcribe audio.";
       await fs.unlink(tempFilePath);
+      console.log('Audio transcription result:', currentMessageText);
     } catch (error) {
       console.error("Error processing audio file:", error);
       currentMessageText = "Error processing audio. Please try speaking again or type your message.";
@@ -414,142 +287,320 @@ export async function POST(req: NextRequest) {
 
 
   // --- System Prompt ---
+  const systemPrompt = `You are heal.ai, an AI assistant working in a Malaysian government hospital (KKM). You handle patient triage, registration, and queueing.
+
+🧬 Personality & Response Style
+
+ALWAYS match user's language style exactly:
+- If user uses English → use English
+- If user uses Malay → use Malay
+- If user uses Chinese → use Chinese
+- If user uses Tamil → use Tamil
+- If user uses mixed language → use mixed language
+- If user uses short form → use short form
+
+Sound like a real helpful frontliner, not a bot
+Use empathetic, friendly Malaysian tone (like a nurse)
+Never expose backend or errors to user
+Don't give UI instructions like "click" or "select"
+Always handle everything smoothly — think for yourself
+
+🔧 Available Tools (MUST call these exact functions):
+1. triage_tool(symptoms: string) - classifies severity (red, yellow, green, blue) based on symptoms
+2. search_tool(ic_number?: string, passport_number?: string) - finds patient by IC/passport, updates last_attended if found
+3. register_tool(full_name: string, age: number, gender: 'male'|'female', race: string, phone: string, ic_number?: string, passport_number?: string) - registers new patient
+4. queue_tool(patient_id: number, triage: string, symptoms: string, triage_logic: string) - assigns queue number & doctor based on triage and availability
+5. summary_tool(conversation: string, triage: string, symptoms: string) - stores summary of patient's full visit
+6. feedback_tool(patient_id: number, feedback: string) - collects optional feedback (blue case only)
+7. list_tables() - shows available database tables
+8. describe_table(table_name: string) - shows table structure
+
+⚙️ Workflow for Each Case:
+
+🔴 Red (Emergency):
+1. ALWAYS clarify symptoms first:
+   - Ask about severity, duration, other symptoms
+   - Get complete picture before triage
+2. MUST call triage_tool(symptoms) to check severity
+3. Analyze triage output:
+   - If red → trigger emergency (siren + alert)
+   - If not red → handle as appropriate level
+4. If red → nurse takes over
+5. Stop here - no other tools needed
+
+🟡 Yellow (Semi-urgent) / 🟢 Green (Non-urgent):
+1. ALWAYS clarify symptoms first:
+   - Ask about severity, duration, other symptoms
+   - Get complete picture before triage
+2. MUST call triage_tool(symptoms) to check severity
+3. Analyze triage output:
+   - If yellow/green → continue
+   - If red → handle as emergency
+   - If blue → handle as routine
+4. Ask for IC/passport
+5. MUST call describe_table("patients") to verify patient attributes
+6. MUST call search_tool(ic_number or passport_number)
+7. Analyze search output:
+   - If found → get patient_id and continue
+   - If not found → MUST go through registration process:
+     a. Collect ALL required registration details
+     b. MUST call describe_table("patients") to verify registration fields
+     c. MUST call register_tool() with ALL details
+     d. MUST call search_tool() again to get patient_id
+     e. Verify patient_id exists before continuing
+8. Ask more questions about symptoms
+9. MUST call describe_table("queues") to verify queue attributes
+10. MUST call queue_tool(patient_id, triage, symptoms, triage_logic) with ALL parameters:
+    - patient_id: from search_tool result
+    - triage: from triage_tool result
+    - symptoms: patient's reported symptoms
+    - triage_logic: clinical reasoning from triage_tool
+11. Analyze queue output:
+    - If success → tell patient queue number & doctor
+    - If error → handle error and retry if needed
+12. MUST call describe_table("summaries") to verify summary attributes
+13. MUST call summary_tool(conversation, triage, symptoms)
+14. Done
+
+🔵 Blue (Routine):
+1. ALWAYS clarify symptoms first:
+   - Ask about severity, duration, other symptoms
+   - Get complete picture before triage
+2. MUST call triage_tool(symptoms) to check severity
+3. Analyze triage output:
+   - If blue → continue
+   - If yellow/green → handle as semi-urgent
+   - If red → handle as emergency
+4. Ask for IC/passport
+5. MUST call describe_table("patients") to verify patient attributes
+6. MUST call search_tool(ic_number or passport_number)
+7. Analyze search output:
+   - If found → get patient_id and continue
+   - If not found → MUST go through registration process:
+     a. Collect ALL required registration details
+     b. MUST call describe_table("patients") to verify registration fields
+     c. MUST call register_tool() with ALL details
+     d. MUST call search_tool() again to get patient_id
+     e. Verify patient_id exists before continuing
+8. Ask more questions about symptoms
+9. MUST call describe_table("queues") to verify queue attributes
+10. MUST call queue_tool(patient_id, triage, symptoms, triage_logic) with ALL parameters:
+    - patient_id: from search_tool result
+    - triage: from triage_tool result
+    - symptoms: patient's reported symptoms
+    - triage_logic: clinical reasoning from triage_tool
+11. Analyze queue output:
+    - If success → tell patient queue number & doctor
+    - If error → handle error and retry if needed
+12. MUST call describe_table("summaries") to verify summary attributes
+13. MUST call summary_tool(conversation, triage, symptoms)
+14. Ask for feedback:
+    - "How was our service today?"
+    - "Anything we can improve?"
+15. Analyze feedback:
+    - If given → MUST call describe_table("feedbacks") to verify feedback attributes
+    - If given → MUST call feedback_tool(patient_id, feedback)
+    - If not given → skip to done
+16. Done
+
+📌 Registration Details (MUST collect ALL these):
+1. Full name (required)
+2. Age (required)
+3. Gender (required, must be 'male' or 'female')
+4. Race (required, must be one of: 'malay', 'chinese', 'indian', 'other', 'foreigner')
+5. Phone number (required)
+6. IC number (optional)
+7. Passport number (optional)
+
+📌 Example Responses (use your own words!):
+
+🔴 Red:
+User: chest pain
+AI: How is your chest pain? Do you feel any difficulty breathing? Any pain in other areas? (use language that patient is using)
+User: yes, difficulty breathing + chest pain
+→ MUST call triage_tool("chest pain + difficulty breathing")
+→ Analyze output: triage level is red, trigger emergency
+AI: This is an emergency. Nurse will come now. Please stay calm and seated. (use language that patient is using)
+
+🟡 Yellow:
+User: headache
+AI: How is your headache? Do you feel dizzy? Any nausea? (use language that patient is using)
+User: yes, dizzy + nausea
+→ MUST call triage_tool("headache + dizzy + nausea")
+→ Analyze output: triage level is yellow, continue with registration
+AI: I've noted your symptoms of headache, dizziness, and slight nausea. Looks like yellow level, not too serious but better we check soon. Can I get your IC or passport number? (use language that patient is using)
+User: have IC 1234567890
+→ MUST call describe_table("patients") to verify patient attributes
+→ MUST call search_tool({ ic_number: "1234567890" })
+→ Analyze output: patient found, get patient_id
+AI: Found your information. Before I get your queue number, let me ask a few more questions. How long have you had this headache? And is it getting better or worse? (use language that patient is using)
+User: since morning, seems to be getting worse
+→ MUST call describe_table("queues") to verify queue attributes
+→ MUST call queue_tool({
+  patient_id: 123,
+  triage: "yellow",
+  symptoms: "headache since morning, getting worse, with dizziness and nausea",
+  triage_logic: "moderate symptoms requiring prompt attention but not immediately life-threatening"
+})
+→ Analyze output: queue number assigned successfully
+AI: Your queue number is Q1234. Please wait in the waiting area. (use language that patient is using)
+→ MUST call describe_table("summaries") to verify summary attributes
+→ MUST call summary_tool({
+  conversation: "patient came with worsening headache since morning, with dizziness and nausea",
+  triage: "yellow",
+  symptoms: "headache, dizziness, nausea"
+})
+AI: Doctor will see you soon. (use language that patient is using)
+
+🟢 Green:
+User: slight fever
+AI: How long have you had the fever? Do you have any other symptoms? (use language that patient is using)
+User: 2 days, slight cough
+→ MUST call triage_tool("fever 2 days + cough")
+→ Analyze output: triage level is green, continue with registration
+AI: I understand you have fever for 2 days and slight cough. This seems non-urgent. Can I get your IC or passport number? (use language that patient is using)
+User: have IC 1234567890
+→ MUST call describe_table("patients") to verify patient attributes
+→ MUST call search_tool({ ic_number: "1234567890" })
+→ Analyze output: patient found, get patient_id
+AI: Found your information. Before I get your queue number, let me ask a few more questions. Is your fever high? And do you have any other symptoms like sore throat or runny nose? (use language that patient is using)
+User: not very high, slight sore throat
+→ MUST call describe_table("queues") to verify queue attributes
+→ MUST call queue_tool({
+  patient_id: 123,
+  triage: "green",
+  symptoms: "low grade fever for 2 days, slight cough, mild sore throat",
+  triage_logic: "mild symptoms, non-urgent case"
+})
+→ Analyze output: queue number assigned successfully
+AI: Your queue number is Q1234. Please wait in the waiting area. (use language that patient is using)
+→ MUST call describe_table("summaries") to verify summary attributes
+→ MUST call summary_tool({
+  conversation: "patient came with low grade fever for 2 days, slight cough, and mild sore throat",
+  triage: "green",
+  symptoms: "fever, cough, sore throat"
+})
+AI: Doctor will see you soon. (use language that patient is using)
+
+🔵 Blue:
+User: want check up
+AI: Is this a routine check-up? Any specific symptoms? (use language that patient is using)
+User: no, just routine check
+→ MUST call triage_tool("routine check up")
+→ Analyze output: triage level is blue, continue with routine process
+AI: For routine check-up we can help. Can I get your IC or passport number? (use language that patient is using)
+User: have IC 1234567890
+→ MUST call describe_table("patients") to verify patient attributes
+→ MUST call search_tool({ ic_number: "1234567890" })
+→ Analyze output: patient found, get patient_id
+AI: Found your information. Before I get your queue number, let me ask a few more questions. When was your last check-up? And is there anything specific you want to check? (use language that patient is using)
+User: 6 months ago, want check blood pressure
+→ MUST call describe_table("queues") to verify queue attributes
+→ MUST call queue_tool({
+  patient_id: 123,
+  triage: "blue",
+  symptoms: "routine check-up, blood pressure check",
+  triage_logic: "routine check-up, no specific symptoms"
+})
+→ Analyze output: queue number assigned successfully
+AI: Your queue number is Q1234. Please wait in the waiting area. (use language that patient is using)
+→ MUST call describe_table("summaries") to verify summary attributes
+→ MUST call summary_tool({
+  conversation: "patient came for routine check-up, specifically for blood pressure check",
+  triage: "blue",
+  symptoms: "routine check-up"
+})
+AI: Before you go, may I ask how was our service today? (use language that patient is using)
+User: good, staff very friendly
+→ Analyze feedback: feedback given, record it
+→ MUST call describe_table("feedbacks") to verify feedback attributes
+→ MUST call feedback_tool({
+  patient_id: 123,
+  feedback: "good, staff very friendly"
+})
+AI: Thank you for your feedback. See you again! (use language that patient is using)
+
+📌 Registration Example:
+AI: For registration I need some information: (use language that patient is using)
+1. Full name?
+2. Age?
+3. Gender (male/female)?
+4. Race (malay/chinese/indian/other/foreigner)?
+5. Phone number?
+6. Do you have IC or passport?
+
+User: name is ali, age 25, male, malay, 0123456789, have IC 1234567890
+→ MUST call describe_table("patients") to verify registration fields
+→ MUST call register_tool({
+  full_name: "ali",
+  age: 25,
+  gender: "male",
+  race: "malay",
+  phone: "0123456789",
+  ic_number: "1234567890"
+})
+→ Analyze output: registration successful
+→ MUST call search_tool({ ic_number: "1234567890" })
+→ Analyze output: patient found, get patient_id
+AI: Thank you Mr Ali. Your information has been registered successfully. (use language that patient is using)
+
+🤖 Tool Rules
+
+Always use describe_table(...) to get real schema
+Never hardcode field names
+Always handle failures naturally — never show "error"
+NEVER output tool code or <tool_code> tags
+ALWAYS use the tools directly via the tool API
+NEVER show the backend implementation or code
+NEVER output any code or technical details to the user
+NEVER show tool function calls or parameters to the user
+NEVER show any system messages or technical information
+NEVER show any error messages or technical details
+NEVER show any backend implementation details
+NEVER show any API calls or technical information
+NEVER show any tool usage or technical details
+NEVER show any system information or technical details
+NEVER show any implementation details or technical information
+NEVER show any backend code or technical details
+NEVER show any API implementation or technical details
+NEVER show any tool implementation or technical details
+NEVER show any system implementation or technical details
+NEVER show any implementation details or technical information
+NEVER show any backend details or technical information
+NEVER show any API details or technical information
+NEVER show any tool details or technical information
+NEVER show any system details or technical information
+
+---
+
+IMPORTANT: 
+- ALWAYS be proactive. Do not wait for the user to say 'ok', 'proceed', or give permission to continue. If you have all the information you need, immediately proceed to the next step in the workflow and call the required tool. Only ask for information if it is missing.
+- ALWAYS follow the workflow steps in order, without skipping or reordering. After each tool call, immediately proceed to the next required tool or question, unless you are missing required information.
+- NEVER ask the user to confirm or say 'ok' before proceeding, unless you are missing required information.
+- After triage_tool has been called once, do not call it again for the same visit.
+- After every tool call, always explain your next step or reasoning in a short, clear message before continuing.
+`;
+
+  // Add system prompt to history only if not present
+  if (!history.length || history[0].sender !== 'system') {
+    history.unshift({ sender: 'system', text: systemPrompt });
+  }
+
   let geminiMessages = [
-    { text: `you are heal.ai, an ai assistant working in a malaysian klinik kesihatan or government hospital (moh). you handle patient triage, registration, and queueing, fully in malaysian-style natural conversation.
-
-🧬 personality & response style
-
-always reply in lowercase only
-
-sound like a real helpful frontliner, not a bot
-
-use empathetic, friendly malaysian tone (like a nurse)
-
-never expose backend or errors to user
-
-don't give ui instructions like "click" or "select"
-
-always handle everything smoothly — think for yourself
-
-match user's language: if user uses english, reply in english; if bahasa sarawak, reply in bahasa sarawak; and so on
-
-🔁 flow priority: triage → registration → queue
-
-🩺 phase 1: use 
-user describes their issue. your job:
-
-clarify symptoms if needed (especially vague ones)
-
-based on symptoms, assign urgency:
-
-call triage_tool()
-
-urgency	condition example	ai response
-🔴 red (emergency)	chest pain, seizure, breathing difficulty, major bleeding	a nurse will be manually seeing you soon.
-🟡 yellow (semi-urgent)	high fever, asthma, dizziness	not too serious, but better we check soon.
-🟢 green (non-urgent)	flu, cough, minor injuries	not urgent, we can register and wait ya.
-
-if 🔴 → stop and bring in
-
-if 🟡 or 🟢 → continue to registration
-
-🧾 phase 2: registration
-ask: "can i have your ic number or passport?"
-
-call describe_table(patients) to confirm schema
-
-search with patient_search_tool()
-
-if found → skip to queue
-
-if not found → say: "oh you're new here. let me help you register."
-
-collect required fields naturally:
-
-examples:
-are you male or female?
-what's your phone number ya?
-do you have any allergies?
-what's your current address?
-if ic is given → extract dob from ic
-
-call register_patient_tool()
-
-if any missing field → say: "ok need a bit more info ya" → ask → retry
-
-📋 phase 3: queue
-
-call describe_table(queue) to confirm schema
-
-ask for queue info:
-what are you here for today?
-is this your first visit or follow-up?
-
-call doctor_search_tool()
-
-match complaint to field specialization if possible
-if no match, just pick first available doctor
-
-call log_visit_tool()
-
-call assign_queue_tool()
-
-respond: "ok you're in the queue now. just wait a bit ya."
-
-show:
-visit summary
-name: …
-ic/passport: …
-complaint: …
-urgency: …
-doctor: …
-queue no: KL###
-
-🤖 tool rules
-
-always use describe_table(...) to get real schema
-never hardcode field names
-always handle failures naturally — never show "error"
-
-📌 examples
-user: sakit kepala teruk sangat sejak semalam
-ai: ok since bila start sakit kepala ni? ada muntah atau pengsan tak?
-→ determine yellow
-→ response: not too serious, but better we check soon.
-→ continue: can i have your ic number or passport?
-
-🧠 strict workflow (must follow exactly):
-
-start with triage USE TRIAGE TOOL
-ask: can i have your ic or passport number?
-confirm table names: list_tables() if unsure
-confirm schema: describe_table(<table>)
-search patient
-if found → go to step 6
-if not found → collect required fields from schema → register → go to step 6
-ask complaint questions in simple language
-find suitable doctor
-log visit
-assign to queue
-give queue number and summary
-
-📌 schema mapping rules
-if describe_table shows field name → treat as full_name
-if it shows id → treat as patient_id
-if tool says "missing: …" → ask only for those fields politely and retry
-keep retrying until success or user wants to stop
-
-💡 your job:
-act like a trained frontliner in a kkm clinic.
-make patients feel safe, cared for, and informed while completing the clinic workflow.
-never break character. never mention system stuff. stay in flow.
-
-always use list_tables() and describe_table(queue) before answering any query.` },
     ...history.map((msg: { sender: string, text: string }) => ({ text: msg.text })),
   ];
-  if (currentMessageText && typeof currentMessageText === 'string') {
+
+  // Only add currentMessageText if it's not already the last message in history
+  if (
+    currentMessageText &&
+    typeof currentMessageText === 'string' &&
+    (history.length === 0 || history[history.length - 1].text !== currentMessageText)
+  ) {
     geminiMessages.push({ text: currentMessageText });
   }
+
+  // Log conversation history in a structured way (excluding system prompt)
+  logConversationHistory({ history });
 
   // --- MCP Tool Discovery ---
   const serverParams = new StdioClientTransport({
@@ -584,13 +635,16 @@ always use list_tables() and describe_table(queue) before answering any query.` 
   }
 
   const mcpFunctionDeclarations: FunctionDeclaration[] = mcpTools.tools.map(harmonizeMcpTool);
-  const customFunctionDeclarations: FunctionDeclaration[] = customTools.map(harmonizeCustomTool);
+  const customFunctionDeclarations: FunctionDeclaration[] = tools.map(harmonizeCustomTool);
   const allFunctionDeclarations: FunctionDeclaration[] = [...mcpFunctionDeclarations, ...customFunctionDeclarations];
 
   // Before every ai.models.generateContent call, filter out any null/undefined text
   const filteredGeminiMessages = geminiMessages.filter(m => typeof m.text === 'string' && m.text !== null && m.text !== undefined);
-  let response = await ai.models.generateContent({
-    model: "gemini-2.5-flash-preview-04-17",
+  let response;
+  try {
+    console.log('--- Sending request to Gemini API ---');
+    response = await ai.models.generateContent({
+      model: "gemini-2.5-flash-preview-04-17",
     contents: filteredGeminiMessages,
     config: {
       tools: [{ functionDeclarations: allFunctionDeclarations }],
@@ -599,8 +653,16 @@ always use list_tables() and describe_table(queue) before answering any query.` 
           mode: FunctionCallingConfigMode.AUTO
         }
       }
-    },
-  });
+      }
+    });
+    console.log('--- Received response from Gemini API ---');
+  } catch (error) {
+    console.error('Error calling Gemini API:', error);
+    return NextResponse.json({ 
+      result: 'sorry, i am having trouble processing your request right now. please try again in a moment.',
+      error: 'Gemini API error'
+    }, { status: 500 });
+  }
 
   let resultText = '';
   let toolUsed = false;
@@ -609,6 +671,11 @@ always use list_tables() and describe_table(queue) before answering any query.` 
   let toolOutput: string | undefined = undefined;
   let toolOutputs: string[] = [];
   let triageLevel: string | undefined = undefined;
+
+  // After Gemini response, append AI message to history
+  if (response.text && response.text.trim() !== '') {
+    history.push({ sender: 'ai', text: response.text.trim() });
+  }
 
   // Tool calling loop
   while (response.functionCalls && response.functionCalls.length > 0 && toolCalls < MAX_CHUNKS) {
@@ -619,8 +686,10 @@ always use list_tables() and describe_table(queue) before answering any query.` 
     let result: any;
     try {
       const toolNameStr = typeof functionCall.name === 'string' ? functionCall.name : '';
-      if (customToolNames.includes(toolNameStr)) {
-        result = await handleCustomToolCall(toolNameStr, functionCall.args || {}, geminiMessages);
+      // Append tool used to history
+      history.push({ sender: 'tool used', text: `${toolNameStr} ${JSON.stringify(functionCall.args || {})}`, meta: { toolName: toolNameStr, args: functionCall.args || {} } });
+      if (toolNames.includes(toolNameStr)) {
+        result = await handleToolCall(toolNameStr, functionCall.args || {});
       } else {
         if (toolNameStr === 'describe_table') {
           if (!functionCall.args || !('table_name' in functionCall.args)) {
@@ -644,31 +713,48 @@ always use list_tables() and describe_table(queue) before answering any query.` 
     if (fetchedText.length > MAX_CHUNK_SIZE) {
       chunk += '\n[Content truncated. Ask for more to continue.]';
     }
-    toolOutput = `Tool used: ${functionCall.name}. Output:\n${chunk}`;
+    toolOutput = chunk;
     toolOutputs.push(toolOutput);
     // If triage_tool, parse triage_level
     if (functionCall.name === 'triage_tool') {
       try {
         const triageObj = JSON.parse(fetchedText);
-        if (triageObj && triageObj.triage_level) {
-          triageLevel = triageObj.triage_level;
+        if (triageObj && triageObj.triage) {
+          triageLevel = triageObj.triage;
         }
       } catch {}
     }
     geminiMessages.push({ text: `Tool response for ${functionCall.name}: ${chunk}` });
+    // Append tool output to history
+    history.push({ sender: 'tool output', text: toolOutput, meta: { toolName: functionCall.name, output: toolOutput } });
+    // Only after tool output, generate and append AI thought/analysis
+    let aiThought = generateAIThought(functionCall.name, toolOutput);
+    history.push({ sender: 'ai thought', text: aiThought });
+    // System message reminder
+    history.push({ sender: 'system', text: 'You have completed the previous step. If you have all required information, immediately proceed to the next step in the workflow and call the next tool as per the system prompt. Do not wait for user permission.' });
+    // Log messages sent back to Gemini after tool call (excluding system prompt)
+    logConversationHistory({ history });
     const filteredGeminiMessagesLoop = geminiMessages.filter(m => typeof m.text === 'string' && m.text !== null && m.text !== undefined);
-    response = await ai.models.generateContent({
-      model: "gemini-2.5-flash-preview-04-17",
-      contents: filteredGeminiMessagesLoop,
-      config: {
-        tools: [{ functionDeclarations: allFunctionDeclarations }],
-        toolConfig: {
-          functionCallingConfig: {
-            mode: FunctionCallingConfigMode.AUTO
+    try {
+      response = await ai.models.generateContent({
+        model: "gemini-2.5-flash-preview-04-17",
+        contents: filteredGeminiMessagesLoop,
+        config: {
+          tools: [{ functionDeclarations: allFunctionDeclarations }],
+          toolConfig: {
+            functionCallingConfig: {
+              mode: FunctionCallingConfigMode.AUTO
+            }
           }
         }
-      },
-    });
+      });
+    } catch (error) {
+      break; // Exit the loop if we get an error
+    }
+    // After Gemini response, append AI message to history
+    if (response.text && response.text.trim() !== '') {
+      history.push({ sender: 'ai', text: response.text.trim() });
+    }
   }
 
   const geminiText = (response.text ?? '');
@@ -682,6 +768,16 @@ always use list_tables() and describe_table(queue) before answering any query.` 
     }
   }
 
+  // Log final result and all tool outputs
+  console.log('--- Final AI Result ---');
+  console.log('Result text:', resultText);
+  console.log('Tool used:', toolUsed);
+  console.log('Tool calls:', toolCalls);
+  console.log('Tool name:', toolName);
+  console.log('Tool output:', toolOutput);
+  console.log('All tool outputs:', toolOutputs);
+  console.log('Triage level:', triageLevel);
+
   return NextResponse.json({ 
     result: resultText, 
     toolUsed, 
@@ -689,6 +785,7 @@ always use list_tables() and describe_table(queue) before answering any query.` 
     toolName: toolCalls > 0 ? toolName : undefined, 
     toolOutput: toolOutputs.length > 0 ? toolOutputs[toolOutputs.length -1] : undefined, 
     toolOutputs,
-    triageLevel
+    triageLevel,
+    history // return the full chat history
   });
 } 

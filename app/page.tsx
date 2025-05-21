@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from 'react';
-import { Mic, Send, User, Loader2, Wrench, ChevronDown, ChevronUp, FileText, CheckCircle, Circle, MicOff } from 'lucide-react';
+import { Mic, Send, User, Loader2, Wrench, ChevronDown, ChevronUp, FileText, CheckCircle, Circle, MicOff, AlertTriangle } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import * as React from 'react';
 import {
@@ -40,7 +40,6 @@ const steps = [
   { label: "Triage", key: "triage" },
   { label: "Search", key: "search" },
   { label: "Registration", key: "registration" },
-  { label: "Visit", key: "visit" },
   { label: "Queue", key: "queue" },
 ];
 
@@ -61,6 +60,17 @@ export default function HealAI() {
   const [isRecording, setIsRecording] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
+  const [showEmergencyModal, setShowEmergencyModal] = useState(false);
+  const emergencySoundRef = useRef<HTMLAudioElement | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+
+  const resetChat = () => {
+    setMessages([{ sender: 'ai', text: 'welcome to heal.ai. how may i help you today?' }]);
+    setTriageLevel(null);
+    setCurrentStep(0);
+    setFetchedContents([]);
+    setShowEmergencyModal(false);
+  };
 
   useEffect(() => {
     setTimeout(() => {
@@ -88,43 +98,74 @@ export default function HealAI() {
     }
   }, [messages]);
 
+  useEffect(() => {
+    // Initialize audio context
+    audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+  }, []);
+
+  const playEmergencySound = () => {
+    if (!audioContextRef.current) return;
+    
+    const audioContext = audioContextRef.current;
+    const oscillator = audioContext.createOscillator();
+    const gainNode = audioContext.createGain();
+
+    // Configure the oscillator for a siren-like sound
+    oscillator.type = 'sine';
+    oscillator.frequency.setValueAtTime(880, audioContext.currentTime); // A5 note
+    oscillator.frequency.setValueAtTime(440, audioContext.currentTime + 0.5); // A4 note
+    oscillator.frequency.setValueAtTime(880, audioContext.currentTime + 1); // Back to A5
+    oscillator.frequency.setValueAtTime(440, audioContext.currentTime + 1.5); // Back to A4
+
+    // Configure the gain node
+    gainNode.gain.setValueAtTime(0.3, audioContext.currentTime); // Lower volume
+    gainNode.gain.setValueAtTime(0.3, audioContext.currentTime + 0.5);
+    gainNode.gain.setValueAtTime(0.3, audioContext.currentTime + 1);
+    gainNode.gain.setValueAtTime(0.3, audioContext.currentTime + 1.5);
+
+    // Connect nodes
+    oscillator.connect(gainNode);
+    gainNode.connect(audioContext.destination);
+
+    // Start and stop the sound
+    oscillator.start();
+    oscillator.stop(audioContext.currentTime + 2); // 2 seconds duration
+  };
+
+  const handleEmergencyTriage = (triageLevel: string) => {
+    if (triageLevel === 'Red') {
+      // Play emergency sound
+      playEmergencySound();
+      // Show emergency modal
+      setShowEmergencyModal(true);
+    }
+  };
+
   const handleSend = async (audioBlob?: Blob) => {
     if (!input.trim() && !audioBlob) return;
 
     const userMessageText = input.trim();
-    // Display [Audio Input] if audio is present, otherwise the typed text.
     const displayMessageText = audioBlob ? (userMessageText ? `${userMessageText} [Audio sent]` : "[Audio Input]") : userMessageText;
     setMessages(prev => [...prev, { sender: 'user', text: displayMessageText }]);
     setInput('');
     setIsLoading(true);
 
-    // Clear memory if user requests (text command)
-    if (userMessageText.toLowerCase() === 'clear memory') {
-      setFetchedContents([]);
-    }
-
-    let historyForApi: Message[] = [...messages]; // Current messages before adding new one
+    let historyForApi: Message[] = [...messages];
     if (fetchedContents.length > 0) {
       fetchedContents.forEach(fc => {
         historyForApi.push({ sender: 'user', text: fc.content });
       });
     }
-     // Add the current user text to historyForApi for context, even if audio is present.
-     // The backend will use the audio for transcription, but text can be kept for record if desired.
     if (userMessageText) {
-        historyForApi.push({ sender: 'user', text: userMessageText });
+      historyForApi.push({ sender: 'user', text: userMessageText });
     }
 
     setMessages(prev => [...prev, { sender: 'ai', text: 'thinking...' }]);
 
     const formData = new FormData();
-    // Send the history *before* the current message that might be audio.
-    // The backend will add the transcribed audio/text as the latest user message.
-    formData.append('history', JSON.stringify(historyForApi)); 
-    
-    // If there's text input, send it. Backend decides if it uses this or audio.
+    formData.append('history', JSON.stringify(historyForApi));
     if (userMessageText) {
-        formData.append('input', userMessageText);
+      formData.append('input', userMessageText);
     }
     if (audioBlob) {
       formData.append('audio', audioBlob, `user_audio_${Date.now()}.webm`);
@@ -136,14 +177,8 @@ export default function HealAI() {
         body: formData,
       });
       const data = await res.json();
-      // If triageLevel is present in response, set it
-      if (data.triageLevel) {
-        setTriageLevel(
-          data.triageLevel === 'red' ? 'Red' :
-          data.triageLevel === 'yellow' ? 'Yellow' :
-          data.triageLevel === 'green' ? 'Green' : null
-        );
-      }
+      
+      // Handle tool outputs
       const aiMessage: Message = {
         sender: 'ai',
         text: data.result,
@@ -157,16 +192,33 @@ export default function HealAI() {
             }
           : undefined
       };
-      setMessages(prev => [
-        ...prev.slice(0, -1), // Remove "thinking..."
-        aiMessage
-      ]);
-      if (data.toolOutput && (data.toolName === 'fetch' || (!data.toolName && data.toolUsed))) {
-        const match = data.toolOutput.match(/Here is the content from (.+?):\n([\s\S]*)/);
-        if (match) {
-          setFetchedContents(prev => [...prev, { url: match[1], content: data.toolOutput }]);
+
+      // Check for queue tool output and create separate message if found
+      const messagesToAdd = [aiMessage];
+      if (data.toolOutput) {
+        try {
+          const json = JSON.parse(data.toolOutput);
+          if (json.queue_number && json.doctor_name) {
+            messagesToAdd.push({
+              sender: 'ai',
+              text: '',
+              toolInfo: {
+                toolUsed: true,
+                toolCalls: 1,
+                toolName: 'queue_tool',
+                toolOutput: data.toolOutput
+              }
+            });
+          }
+        } catch (e) {
+          console.error('Error parsing tool output:', e);
         }
       }
+
+      setMessages(prev => [
+        ...prev.slice(0, -1), // Remove "thinking..."
+        ...messagesToAdd
+      ]);
     } catch (err) {
       setMessages(prev => [
         ...prev.slice(0, -1), // Remove "thinking..."
@@ -331,6 +383,45 @@ export default function HealAI() {
     }
   };
 
+  useEffect(() => {
+    if (messages.length > 0) {
+      const lastAiMessage = messages.filter(m => m.sender === 'ai').pop();
+      if (
+        lastAiMessage &&
+        lastAiMessage.toolInfo?.toolUsed &&
+        lastAiMessage.toolInfo.toolOutput
+      ) {
+        const toolName = lastAiMessage.toolInfo.toolName?.toLowerCase() || '';
+        let isTriageTool = toolName.includes('triage');
+        let triageValue: string | null = null;
+        try {
+          let output = lastAiMessage.toolInfo.toolOutput;
+          if (typeof output === 'string') {
+            // Extract JSON part if there's a prefix
+            const jsonStart = output.indexOf('{');
+            const jsonEnd = output.lastIndexOf('}');
+            if (jsonStart !== -1 && jsonEnd !== -1 && jsonEnd > jsonStart) {
+              output = output.substring(jsonStart, jsonEnd + 1);
+            }
+          }
+          const triageObj = JSON.parse(output);
+          if (triageObj.triage) {
+            triageValue = triageObj.triage.charAt(0).toUpperCase() + triageObj.triage.slice(1).toLowerCase();
+            isTriageTool = true;
+          }
+        } catch (e) {
+          // Ignore parse errors
+        }
+        if (isTriageTool && triageValue) {
+          setTriageLevel(triageValue);
+          if (triageValue === 'Red') {
+            handleEmergencyTriage(triageValue);
+          }
+        }
+      }
+    }
+  }, [messages]);
+
   return (
     <div className="flex flex-col h-screen bg-gradient-to-br from-green-50 to-white">
       {/* Progress Bar / Stepper */}
@@ -350,9 +441,11 @@ export default function HealAI() {
           <div className="text-center mb-2 py-2">
             <Badge 
               className={`text-base px-3 py-1.5 rounded-md shadow-md ${
-                triageLevel === "Red" ? "bg-red-500 hover:bg-red-600" : 
-                triageLevel === "Yellow" ? "bg-yellow-400 hover:bg-yellow-500 text-neutral-800" : 
-                "bg-green-500 hover:bg-green-600"
+                triageLevel.toLowerCase() === "red" ? "bg-red-500 hover:bg-red-600" : 
+                triageLevel.toLowerCase() === "yellow" ? "bg-yellow-400 hover:bg-yellow-500 text-neutral-800" : 
+                triageLevel.toLowerCase() === "green" ? "bg-green-500 hover:bg-green-600" :
+                triageLevel.toLowerCase() === "blue" ? "bg-blue-500 hover:bg-blue-600" :
+                "bg-gray-500 hover:bg-gray-600"
               } text-white font-semibold`}
             >
               TRIAGE: {triageLevel.toUpperCase()}
@@ -375,9 +468,7 @@ export default function HealAI() {
             key={i}
             className={`mb-10 flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'} animate-fade-in`}
           >
-            {/* Only wrap bubble and icon together, not full width */}
             <div className={`flex items-end gap-2`} style={{ maxWidth: '80%', alignItems: 'center' }}>
-              {/* AI icon left, user icon right, both close to bubble */}
               {msg.sender === 'ai' && (
                 <User className="text-green-500 bg-green-100 rounded-full p-2" size={36} />
               )}
@@ -391,9 +482,27 @@ export default function HealAI() {
               >
                 {msg.sender === 'ai' ? (
                   <div className="prose prose-lg prose-green max-w-2xl break-words">
-                    <ReactMarkdown>{msg.text}</ReactMarkdown>
-                    {/* Tool info and artifact for this AI message */}
-                    {msg.sender === 'ai' && msg.toolInfo?.toolUsed && (
+                    {msg.text && <ReactMarkdown>{msg.text}</ReactMarkdown>}
+                    {msg.toolInfo?.toolUsed && msg.toolInfo.toolName === 'queue_tool' && !msg.text && (() => {
+                      try {
+                        const json = JSON.parse(msg.toolInfo.toolOutput || '{}');
+                        if (json.queue_number && json.doctor_name) {
+                          return (
+                            <Card className="bg-white border-2 border-green-200 shadow-lg animate-fade-in">
+                              <div className="p-6 text-center space-y-4">
+                                <div className="text-4xl font-bold text-green-600 animate-pulse">{json.queue_number}</div>
+                                <div className="text-lg text-gray-600">Assigned to {json.doctor_name}</div>
+                                <div className="text-sm text-gray-500">Please wait in the waiting area</div>
+                              </div>
+                            </Card>
+                          );
+                        }
+                      } catch (e) {
+                        console.error('Error parsing queue tool output:', e);
+                      }
+                      return null;
+                    })()}
+                    {msg.toolInfo?.toolUsed && (
                       <div className="flex flex-col gap-1 mt-2 animate-fade-in">
                         <div className="flex items-center gap-2 text-xs text-green-700">
                           <Wrench size={16} className="animate-bounce" />
@@ -411,78 +520,21 @@ export default function HealAI() {
                         </div>
                         {showArtifact[i] && (
                           <div className="bg-gray-50 border border-green-200 rounded p-4 text-sm max-h-80 overflow-auto whitespace-pre-wrap mt-2 shadow-inner font-mono space-y-4">
-                            {(msg.toolInfo.toolOutputs || [msg.toolInfo.toolOutput]).map((out, idx) => (
-                              <div key={idx}>
-                                <div className="text-xs text-green-600 mb-1">Output #{idx + 1}</div>
-                                {(() => {
-                                  try {
-                                    const json = JSON.parse(out as string);
-                                    return <pre>{JSON.stringify(json, null, 2)}</pre>;
-                                  } catch {
-                                    return (
-                                      <pre className={/error|missing/i.test(out ?? '') ? 'text-red-600' : ''}>{out}</pre>
-                                    );
-                                  }
-                                })()}
-                              </div>
-                            ))}
+                            {(msg.toolInfo.toolOutputs || [msg.toolInfo.toolOutput]).map((out, idx) => {
+                              try {
+                                const json = typeof out === 'string' ? JSON.parse(out) : out;
+                                return <pre key={idx}>{JSON.stringify(json, null, 2)}</pre>;
+                              } catch (e) {
+                                return <pre key={idx}>{out}</pre>;
+                              }
+                            })}
                           </div>
                         )}
                       </div>
                     )}
-                    {msg.sender === 'ai' && msg.toolInfo?.toolUsed &&
-                      msg.toolInfo.toolName &&
-                      msg.toolInfo.toolName.toLowerCase() === 'triage_tool' &&
-                      triageLevel && (
-                        triageLevel === 'Red' ? (
-                          <Badge variant="destructive" className="ml-2 my-1">URGENT</Badge>
-                        ) : triageLevel === 'Yellow' ? (
-                          <Badge className="bg-yellow-400 text-black hover:bg-yellow-500 ml-2 my-1">SEMI-URGENT</Badge>
-                        ) : triageLevel === 'Green' ? (
-                          <Badge className="bg-green-500 text-white hover:bg-green-600 ml-2 my-1">NON-URGENT</Badge>
-                        ) : null
-                      )}
                   </div>
                 ) : (
                   <span className="font-bold">{msg.text}</span>
-                )}
-                {/* Tool info and artifact for this AI message */}
-                {msg.sender === 'ai' && msg.toolInfo?.toolUsed && (
-                  <div className="flex flex-col gap-1 mt-2 animate-fade-in">
-                    <div className="flex items-center gap-2 text-xs text-green-700">
-                      <Wrench size={16} className="animate-bounce" />
-                      <span>
-                        AI used the <b>{msg.toolInfo.toolName || 'fetch'}</b> tool {msg.toolInfo.toolCalls > 1 ? `${msg.toolInfo.toolCalls} times` : 'once'} to answer this.
-                      </span>
-                      <button
-                        className="ml-2 flex items-center gap-1 px-2 py-1 rounded bg-green-100 text-green-700 hover:bg-green-200 hover:shadow-md transition"
-                        onClick={() => setShowArtifact(prev => ({ ...prev, [i]: !prev[i] }))}
-                      >
-                        <FileText size={14} />
-                        {showArtifact[i] ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                        <span>{showArtifact[i] ? 'Hide' : 'Show'} tool output</span>
-                      </button>
-                    </div>
-                    {showArtifact[i] && (
-                      <div className="bg-gray-50 border border-green-200 rounded p-4 text-sm max-h-80 overflow-auto whitespace-pre-wrap mt-2 shadow-inner font-mono space-y-4">
-                        {(msg.toolInfo.toolOutputs || [msg.toolInfo.toolOutput]).map((out, idx) => (
-                          <div key={idx}>
-                            <div className="text-xs text-green-600 mb-1">Output #{idx + 1}</div>
-                            {(() => {
-                              try {
-                                const json = JSON.parse(out as string);
-                                return <pre>{JSON.stringify(json, null, 2)}</pre>;
-                              } catch {
-                                return (
-                                  <pre className={/error|missing/i.test(out ?? '') ? 'text-red-600' : ''}>{out}</pre>
-                                );
-                              }
-                            })()}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
                 )}
               </div>
               {msg.sender === 'user' && (
@@ -521,6 +573,129 @@ export default function HealAI() {
         >
           {isLoading ? <Loader2 className="animate-spin" size={28} /> : <Send size={28} />}
         </button>
+        {/* Simulate Tool Buttons */}
+        <div className="ml-6 flex gap-2">
+          {/* Simulate triage_tool */}
+          <button
+            title="Simulate Triage"
+            className="bg-red-400 p-3 rounded-full text-white hover:bg-red-500 shadow"
+            onClick={() => {
+              setMessages(prev => [...prev, {
+                sender: 'ai',
+                text: 'Based on your symptoms, you are classified as yellow triage. Please wait for further instructions.',
+                toolInfo: {
+                  toolUsed: true,
+                  toolCalls: 1,
+                  toolName: 'triage_tool',
+                  toolOutput: JSON.stringify({ triage: 'yellow', logic: 'Patient has moderate symptoms, not life-threatening.' })
+                }
+              }]);
+              setTriageLevel('Yellow');
+            }}
+            disabled={isLoading || isRecording}
+          >Triage</button>
+          {/* Simulate search_tool */}
+          <button
+            title="Simulate Search"
+            className="bg-blue-400 p-3 rounded-full text-white hover:bg-blue-500 shadow"
+            onClick={() => setMessages(prev => [...prev, {
+              sender: 'ai',
+              text: 'Patient found in the system.',
+              toolInfo: {
+                toolUsed: true,
+                toolCalls: 1,
+                toolName: 'search_tool',
+                toolOutput: JSON.stringify({ status: 'found', patient: { id: 1, full_name: 'Syamil', ic_number: '900101-01-1234' } })
+              }
+            }])}
+            disabled={isLoading || isRecording}
+          >Search</button>
+          {/* Simulate register_tool */}
+          <button
+            title="Simulate Register"
+            className="bg-green-400 p-3 rounded-full text-white hover:bg-green-500 shadow"
+            onClick={() => setMessages(prev => [...prev, {
+              sender: 'ai',
+              text: 'Registration successful. Welcome, Syamil!',
+              toolInfo: {
+                toolUsed: true,
+                toolCalls: 1,
+                toolName: 'register_tool',
+                toolOutput: JSON.stringify({ status: 'registered', patient_id: 1 })
+              }
+            }])}
+            disabled={isLoading || isRecording}
+          >Register</button>
+          {/* Simulate queue_tool */}
+          <button
+            title="Simulate Queue"
+            className="bg-purple-400 p-3 rounded-full text-white hover:bg-purple-500 shadow"
+            onClick={() => {
+              const testQueue = {
+                queue_number: `Q${Math.floor(Math.random() * 10000).toString().padStart(4, '0')}`,
+                doctor_id: 3,
+                doctor_name: 'Dr. Rajesh Kumar',
+                queue_id: Math.floor(Math.random() * 100) + 1
+              };
+              setMessages(prev => [
+                ...prev,
+                {
+                  sender: 'ai',
+                  text: 'Your queue number is ' + testQueue.queue_number + '. Please wait for ' + testQueue.doctor_name + ' to call you.',
+                  toolInfo: {
+                    toolUsed: true,
+                    toolCalls: 1,
+                    toolName: 'queue_tool',
+                    toolOutput: JSON.stringify(testQueue)
+                  }
+                },
+                {
+                  sender: 'ai',
+                  text: '',
+                  toolInfo: {
+                    toolUsed: true,
+                    toolCalls: 1,
+                    toolName: 'queue_tool',
+                    toolOutput: JSON.stringify(testQueue)
+                  }
+                }
+              ]);
+            }}
+            disabled={isLoading || isRecording}
+          >Queue</button>
+          {/* Simulate summary_tool */}
+          <button
+            title="Simulate Summary"
+            className="bg-yellow-400 p-3 rounded-full text-white hover:bg-yellow-500 shadow"
+            onClick={() => setMessages(prev => [...prev, {
+              sender: 'ai',
+              text: 'Summary recorded for this visit.',
+              toolInfo: {
+                toolUsed: true,
+                toolCalls: 1,
+                toolName: 'summary_tool',
+                toolOutput: JSON.stringify({ status: 'recorded', summary: 'Patient presented with cough and fever. Triage: yellow.' })
+              }
+            }])}
+            disabled={isLoading || isRecording}
+          >Summary</button>
+          {/* Simulate feedback_tool */}
+          <button
+            title="Simulate Feedback"
+            className="bg-pink-400 p-3 rounded-full text-white hover:bg-pink-500 shadow"
+            onClick={() => setMessages(prev => [...prev, {
+              sender: 'ai',
+              text: 'Thank you for your feedback!',
+              toolInfo: {
+                toolUsed: true,
+                toolCalls: 1,
+                toolName: 'feedback_tool',
+                toolOutput: JSON.stringify({ status: 'recorded' })
+              }
+            }])}
+            disabled={isLoading || isRecording}
+          >Feedback</button>
+        </div>
       </div>
 
       {/* Registration Modal */}
@@ -547,6 +722,42 @@ export default function HealAI() {
       {/* Add error/validation message display for registration step */}
       {regError && <div className="text-red-600 text-lg font-bold mb-4">{regError}</div>}
 
+      {/* Emergency Modal */}
+      <Dialog open={showEmergencyModal} onOpenChange={setShowEmergencyModal}>
+        <DialogContent className="sm:max-w-md bg-red-50 border-red-200">
+          <DialogHeader>
+            <DialogTitle className="text-red-600 flex items-center gap-2">
+              <AlertTriangle className="h-6 w-6" />
+              Emergency Alert - Critical Triage
+            </DialogTitle>
+          </DialogHeader>
+          <div className="py-4">
+            <div className="text-center space-y-4">
+              <div className="text-2xl font-bold text-red-600">
+                🚨 EMERGENCY 🚨
+              </div>
+              <p className="text-lg">
+                Patient requires immediate medical attention.
+                <br />
+                Nurse has been notified and is on the way.
+              </p>
+              <div className="animate-pulse text-red-500 font-semibold">
+                Please remain calm and seated.
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="destructive"
+              className="w-full"
+              onClick={resetChat}
+            >
+              Acknowledge
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <style jsx global>{`
         .animate-fade-in {
           animation: fadeIn 0.4s;
@@ -554,6 +765,17 @@ export default function HealAI() {
         @keyframes fadeIn {
           from { opacity: 0; transform: translateY(10px); }
           to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-pulse {
+          animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+        @keyframes pulse {
+          0%, 100% {
+            opacity: 1;
+          }
+          50% {
+            opacity: 0.7;
+          }
         }
         .prose-green a {
           color: #16a34a;

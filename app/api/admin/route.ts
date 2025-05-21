@@ -1,16 +1,37 @@
 import { NextRequest, NextResponse } from 'next/server';
-import sqlite3 from 'sqlite3';
-import { open } from 'sqlite';
-import path from 'path';
+import { getDb } from '@/lib/data';
+import { triage_tool, search_tool, register_tool, queue_tool, summary_tool, feedback_tool } from '@/lib/tools';
 
-const DB_PATH = path.join(process.cwd(), 'lib', 'clinic.db');
+// Type definitions for request bodies
+type TriageInput = { symptoms: string };
+type SearchInput = { ic_number?: string; passport_number?: string };
+type RegisterInput = {
+  ic_number?: string;
+  passport_number?: string;
+  full_name: string;
+  age: number;
+  gender: 'male' | 'female';
+  race: 'malay' | 'chinese' | 'indian' | 'other' | 'foreigner';
+  phone: string;
+};
+type QueueInput = { patient_id: number; triage: string };
+type SummaryInput = { 
+  conversation: string; 
+  triage: string; 
+  symptoms: string;
+  queue_id: number;
+};
+type FeedbackInput = { patient_id: number; feedback: string };
 
-async function getDb() {
-  return open({
-    filename: DB_PATH,
-    driver: sqlite3.Database
-  });
-}
+// Custom tools mapping
+const customTools = {
+  triage_tool,
+  search_tool,
+  register_tool,
+  queue_tool,
+  summary_tool,
+  feedback_tool
+};
 
 export async function GET(req: NextRequest) {
   const table = req.nextUrl.searchParams.get('table');
@@ -43,28 +64,55 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  const table = req.nextUrl.searchParams.get('table');
-  if (!table) return NextResponse.json({ error: 'Missing table' }, { status: 400 });
-  const { row } = await req.json();
+  const action = req.nextUrl.searchParams.get('action');
+  if (!action) return NextResponse.json({ error: 'Missing action' }, { status: 400 });
+
   try {
-    const db = await getDb();
-    const keys = Object.keys(row);
-    const placeholders = keys.map(() => '?').join(',');
-    await db.run(
-      `INSERT INTO ${table} (${keys.join(',')}) VALUES (${placeholders})`,
-      ...keys.map(k => row[k])
-    );
-    await db.close();
-    return NextResponse.json({ success: true });
+    const body = await req.json();
+    const tool = customTools[action as keyof typeof customTools];
+    
+    if (!tool) {
+      return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
+    }
+
+    // Type checking based on action
+    let typedBody;
+    switch (action) {
+      case 'triage':
+        typedBody = body as TriageInput;
+        break;
+      case 'search':
+        typedBody = body as SearchInput;
+        break;
+      case 'register':
+        typedBody = body as RegisterInput;
+        break;
+      case 'queue':
+        typedBody = body as QueueInput;
+        break;
+      case 'summary':
+        typedBody = body as SummaryInput;
+        break;
+      case 'feedback':
+        typedBody = body as FeedbackInput;
+        break;
+      default:
+        return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
+    }
+
+    // Type assertion for the tool function
+    const typedTool = tool as (input: any) => Promise<any>;
+    return NextResponse.json(await typedTool(typedBody));
   } catch (e) {
-    return NextResponse.json({ error: 'Failed to add row' }, { status: 500 });
+    console.error('Error in POST:', e);
+    return NextResponse.json({ error: 'Operation failed' }, { status: 500 });
   }
 }
 
 export async function PUT(req: NextRequest) {
   const table = req.nextUrl.searchParams.get('table');
   if (!table) return NextResponse.json({ error: 'Missing table' }, { status: 400 });
-  const { row } = await req.json();
+  const { row } = await req.json() as { row: Record<string, any> };
   try {
     const db = await getDb();
     const columnsInfo = await db.all(`PRAGMA table_info(${table})`);
@@ -87,7 +135,7 @@ export async function PUT(req: NextRequest) {
 export async function DELETE(req: NextRequest) {
   const table = req.nextUrl.searchParams.get('table');
   if (!table) return NextResponse.json({ error: 'Missing table' }, { status: 400 });
-  const { row } = await req.json();
+  const { row } = await req.json() as { row: Record<string, any> };
   try {
     const db = await getDb();
     const columnsInfo = await db.all(`PRAGMA table_info(${table})`);

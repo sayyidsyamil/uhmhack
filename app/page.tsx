@@ -16,7 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
-import { Card } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 // Define the Message type
 interface Message {
@@ -439,10 +439,10 @@ export default function HealAI() {
         {/* Display Triage Level */}
         {triageLevel && (
           <div className="text-center mb-2 py-2">
-            <Badge 
+            <Badge
               className={`text-base px-3 py-1.5 rounded-md shadow-md ${
-                triageLevel.toLowerCase() === "red" ? "bg-red-500 hover:bg-red-600" : 
-                triageLevel.toLowerCase() === "yellow" ? "bg-yellow-400 hover:bg-yellow-500 text-neutral-800" : 
+                triageLevel.toLowerCase() === "red" ? "bg-red-500 hover:bg-red-600" :
+                triageLevel.toLowerCase() === "yellow" ? "bg-yellow-400 hover:bg-yellow-500 text-neutral-800" :
                 triageLevel.toLowerCase() === "green" ? "bg-green-500 hover:bg-green-600" :
                 triageLevel.toLowerCase() === "blue" ? "bg-blue-500 hover:bg-blue-600" :
                 "bg-gray-500 hover:bg-gray-600"
@@ -460,6 +460,7 @@ export default function HealAI() {
           HEAL<span className="text-black">.ai</span>
         </span>
       </header>
+
 
       {/* Chat Area */}
       <div className="flex-1 overflow-y-auto px-8 py-10 bg-gradient-to-b from-green-50 via-white to-gray-100 border-t border-b border-gray-200">
